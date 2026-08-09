@@ -47,7 +47,10 @@ class DraftPayloadTests(unittest.TestCase):
     def test_operational_fixed_values_and_content_url(self) -> None:
         payload = draft.build_payload(self.config, self.args)
 
-        self.assertEqual(payload["resfmt"], "JSON")
+        # The previously successful createCampaign request did not send resfmt.
+        # Zoho validates that field differently from the OAuth response format,
+        # so it must not be added to the form payload.
+        self.assertNotIn("resfmt", payload)
         self.assertEqual(payload["topicId"], "17155000000008017")
         self.assertEqual(payload["from_name"], "天野晴香／株式会社Delight Hub")
         self.assertEqual(payload["from_email"], "h-amano01@delight-hub.jp")
@@ -61,11 +64,11 @@ class DraftPayloadTests(unittest.TestCase):
             self.config, payload, self.args.campaign_slug, self.args.mailing_list
         )
         self.assertEqual(summary["campaign_slug"], "2026-example")
-        self.assertEqual(summary["resfmt"], "JSON")
+        self.assertNotIn("resfmt", summary)
         for secret_name in (*draft.SECRET_NAMES, "access_token"):
             self.assertNotIn(secret_name, json.dumps(summary))
 
-    def test_dry_run_prints_resfmt_without_loading_secrets(self) -> None:
+    def test_dry_run_omits_resfmt_without_loading_secrets(self) -> None:
         argv = [
             "create_zoho_draft.py", "--campaign-slug", self.args.campaign_slug,
             "--campaign-name", self.args.campaign_name, "--subject", self.args.subject,
@@ -76,7 +79,17 @@ class DraftPayloadTests(unittest.TestCase):
             draft, "load_secrets", side_effect=AssertionError("must not load secrets")
         ), redirect_stdout(output):
             self.assertEqual(draft.main(), 0)
-        self.assertIn('"resfmt": "JSON"', output.getvalue())
+        self.assertNotIn('"resfmt"', output.getvalue())
+
+    def test_defaults_build_the_same_list_details_as_explicit_selection(self) -> None:
+        defaults = self.config["default_mailing_lists"]
+        default_args = argparse.Namespace(**vars(self.args))
+        default_args.mailing_list = defaults
+
+        self.assertEqual(
+            draft.build_payload(self.config, default_args)["list_details"],
+            draft.build_payload(self.config, self.args)["list_details"],
+        )
 
     def test_numeric_and_string_success_codes_are_accepted(self) -> None:
         for code in (200, "200"):
