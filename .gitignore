@@ -1,0 +1,24 @@
+# OAuth secrets (keep the example)
+.env
+.env.*
+!.env.example
+
+# Optional machine-local configuration
+config/zoho.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Editor / OS / temporary files
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.tmp
+*~

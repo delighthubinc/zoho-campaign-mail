@@ -1,0 +1,18 @@
+{
+  "accounts_token_url": "https://accounts.zoho.jp/oauth/v2/token",
+  "campaigns_base_url": "https://campaigns.zoho.jp",
+  "github_pages_base_url": "https://delighthubinc.github.io/zoho-campaign-mail/",
+  "from": {
+    "name": "天野晴香／株式会社Delight Hub",
+    "email": "h-amano01@delight-hub.jp"
+  },
+  "reply_to": "h-amano01@delight-hub.jp",
+  "topic": {
+    "name": "Marketing",
+    "id": "17155000000008017"
+  },
+  "mailing_lists": {
+    "過去リスト（新）": "3zed9d3e291d576c454137d73c7861ad5f164ac0b4207463f0d7d28a805d92174b",
+    "CRMから連携されたリスト": "3zfc1d61d9ab39d57f34714cbbe3a168f99d03784995392a08a00ca40669125b59"
+  }
+}
