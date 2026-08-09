@@ -214,32 +214,23 @@ def redacted_summary(
 
 
 def validate_create_response(response: dict, sensitive_values: tuple[str, ...] = ()) -> None:
-    """Reject Zoho business errors, including those returned with HTTP 200."""
+    """Reject Zoho business errors without echoing any response-body fields."""
     code = response.get("code")
     if code in (200, "200"):
         return
-
-    def safe_value(key: str) -> str:
-        value = str(response.get(key, ""))
-        for secret in sensitive_values:
-            if secret:
-                value = value.replace(secret, "[REDACTED]")
-        return value
-
-    raise DraftError(
-        "Zoho Campaigns APIがエラーを返しました: "
-        f"code={safe_value('code')}, message={safe_value('message')}, uri={safe_value('uri')}"
-    )
+    # Do not log code/message/uri: all originate in the provider response body.
+    raise DraftError("Zoho Campaigns APIがDraft作成エラーを返しました（レスポンス本文は出力しません）")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="createCampaign APIだけを使ってZoho Campaigns Draftを作成します")
     parser.add_argument("--config", default=ROOT / "config" / "zoho.json", type=Path)
     parser.add_argument("--env-file", default=ROOT / ".env", type=Path)
-    parser.add_argument("--campaign-slug", required=True)
-    parser.add_argument("--campaign-name", required=True)
-    parser.add_argument("--subject", required=True)
-    parser.add_argument("--mailing-list", action="append", required=True, help="設定JSONのリスト名。複数回指定可")
+    parser.add_argument("--campaign-file", type=Path, help="slug/name/subjectを取得するcampaign.json")
+    parser.add_argument("--campaign-slug")
+    parser.add_argument("--campaign-name")
+    parser.add_argument("--subject")
+    parser.add_argument("--mailing-list", action="append", help="省略時は設定のdefault_mailing_lists")
     parser.add_argument("--dry-run", action="store_true", help="OAuth通信もDraft作成も行わず設定だけを検証")
     return parser.parse_args()
 
@@ -247,12 +238,22 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     try:
-        if not SLUG_RE.fullmatch(args.campaign_slug):
-            raise DraftError("campaign-slug は小文字英数字とハイフン（最大80文字）で指定してください")
-        if not args.campaign_name.strip() or not args.subject.strip():
-            raise DraftError("campaign-name と subject は空にできません")
         config = load_json(args.config)
         validate_config(config)
+        if args.campaign_file:
+            campaign = load_json(args.campaign_file)
+            args.campaign_slug = require_text(campaign, "campaign_slug", "campaign")
+            args.campaign_name = require_text(campaign, "zoho_campaign_name", "campaign")
+            args.subject = require_text(campaign, "subject", "campaign")
+        if not args.mailing_list:
+            defaults = config.get("default_mailing_lists")
+            if not isinstance(defaults, list) or not defaults or not all(isinstance(x, str) and x for x in defaults):
+                raise DraftError("default_mailing_listsを空でない文字列配列で設定してください")
+            args.mailing_list = defaults
+        if not isinstance(args.campaign_slug, str) or not SLUG_RE.fullmatch(args.campaign_slug):
+            raise DraftError("campaign-slug は小文字英数字とハイフン（最大80文字）で指定してください")
+        if not isinstance(args.campaign_name, str) or not isinstance(args.subject, str) or not args.campaign_name.strip() or not args.subject.strip():
+            raise DraftError("campaign-name と subject は空にできません")
         payload = build_payload(config, args)
         print(
             json.dumps(
@@ -270,8 +271,7 @@ def main() -> int:
         endpoint = config["campaigns_base_url"].rstrip("/") + CREATE_CAMPAIGN_PATH
         result = request_json(endpoint, payload, {"Authorization": f"Zoho-oauthtoken {token}"})
         validate_create_response(result, tuple(secrets.values()) + (token,))
-        print("Zoho Campaigns createCampaign のレスポンス:")
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print("Zoho Campaigns Draftを作成しました。")
         return 0
     except DraftError as exc:
         print(f"エラー: {exc}", file=sys.stderr)

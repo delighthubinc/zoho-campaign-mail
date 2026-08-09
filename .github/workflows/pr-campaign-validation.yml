@@ -1,0 +1,70 @@
+name: PR Campaign Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: campaign-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate-campaign:
+    name: validate-campaign
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      eligible: ${{ steps.scope.outputs.eligible }}
+      slug: ${{ steps.scope.outputs.slug }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Restrict production campaign changes
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python scripts/check_pr_scope.py --base "$BASE_SHA" --head "$HEAD_SHA" >> "$GITHUB_OUTPUT"
+      - name: Run all unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Compile every Python file
+        run: find scripts tests -type f -name '*.py' -print0 | xargs -0 python -m py_compile
+      - name: Check whitespace errors
+        run: git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+      - name: Regenerate checked-in HTML
+        if: steps.scope.outputs.eligible == 'true'
+        env:
+          SLUG: ${{ steps.scope.outputs.slug }}
+        run: |
+          python scripts/build_email.py --campaign-slug "$SLUG" --content "campaigns/$SLUG/campaign.json" --overwrite
+          git diff --exit-code -- "campaigns/$SLUG/mail.html"
+      - name: Validate generated campaign
+        if: steps.scope.outputs.eligible == 'true'
+        run: python scripts/validate_campaign.py --campaign-slug "${{ steps.scope.outputs.slug }}"
+      - name: Create automation GitHub App token
+        id: app-token
+        if: steps.scope.outputs.eligible == 'true' && !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.CAMPAIGN_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.CAMPAIGN_AUTOMATION_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Enable protected auto-merge as the automation GitHub App
+        if: steps.app-token.outcome == 'success'
+        env:
+          # A GitHub App token is deliberate: merges made with GITHUB_TOKEN suppress
+          # subsequent push workflows. App-authored merges emit the main push event.
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          # GitHub's auto-merge queue still requires branch protection checks and a conflict-free PR.
+          gh pr merge "${{ github.event.pull_request.number }}" --auto --squash

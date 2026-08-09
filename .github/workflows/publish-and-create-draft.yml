@@ -1,0 +1,129 @@
+name: Verify Pages and Create Zoho Draft
+
+on:
+  push:
+    branches: [main]
+    paths: ["campaigns/**"]
+
+permissions:
+  contents: read
+  deployments: read
+  issues: write
+
+concurrency:
+  group: zoho-draft-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      campaigns: ${{ steps.changed.outputs.campaigns }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 2}
+      - id: changed
+        run: |
+          campaigns="$(git diff --name-only '${{ github.event.before }}' '${{ github.sha }}' | sed -n 's#^campaigns/\([^/]*\)/campaign.json$#\1#p' | sort -u | jq -Rsc 'split("\n") | map(select(length > 0))')"
+          echo "campaigns=$campaigns" >> "$GITHUB_OUTPUT"
+
+  publish-and-draft:
+    needs: discover
+    if: needs.discover.outputs.campaigns != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        slug: ${{ fromJSON(needs.discover.outputs.campaigns) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Wait for the GitHub Pages deployment for this commit
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const deadline = Date.now() + 10 * 60 * 1000;
+            while (Date.now() < deadline) {
+              const deployments = await github.rest.repos.listDeployments({
+                owner: context.repo.owner, repo: context.repo.repo,
+                sha: context.sha, environment: 'github-pages', per_page: 10
+              });
+              for (const deployment of deployments.data) {
+                const statuses = await github.rest.repos.listDeploymentStatuses({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  deployment_id: deployment.id, per_page: 1
+                });
+                const state = statuses.data[0]?.state;
+                if (state === 'success') return;
+                if (['failure', 'error', 'inactive'].includes(state)) core.setFailed(`Pages deployment: ${state}`);
+              }
+              await new Promise(resolve => setTimeout(resolve, 15000));
+            }
+            core.setFailed('Timed out waiting for the matching GitHub Pages deployment');
+      - name: Poll and validate the published HTML and every required URL
+        env:
+          URL: https://delighthubinc.github.io/zoho-campaign-mail/campaigns/${{ matrix.slug }}/mail.html
+        run: |
+          for attempt in $(seq 1 20); do
+            if python scripts/validate_campaign.py --campaign-slug '${{ matrix.slug }}' --public-url "$URL" --check-urls; then exit 0; fi
+            sleep 15
+          done
+          exit 1
+      - name: Check durable idempotency ledger
+        id: ledger
+        uses: actions/github-script@v7
+        env:
+          SLUG: ${{ matrix.slug }}
+        with:
+          script: |
+            const fs = require('fs'); const crypto = require('crypto');
+            const data = JSON.parse(fs.readFileSync(`campaigns/${process.env.SLUG}/campaign.json`, 'utf8'));
+            const marker = crypto.createHash('sha256').update(`${context.sha}\0${data.campaign_slug}\0${data.zoho_campaign_name}`).digest('hex');
+            core.setOutput('marker', marker);
+            const issues = await github.rest.issues.listForRepo({owner: context.repo.owner, repo: context.repo.repo, state:'open'});
+            const issue = issues.data.find(x => x.title === '[automation] Zoho Draft ledger');
+            core.setOutput('issue', issue?.number || '');
+            if (issue) {
+              const comments = await github.paginate(github.rest.issues.listComments, {owner:context.repo.owner, repo:context.repo.repo, issue_number:issue.number, per_page:100});
+              core.setOutput('duplicate', comments.some(x => x.body?.includes(`draft-marker:${marker}`)) ? 'true' : 'false');
+            } else core.setOutput('duplicate', 'false');
+      - name: Reserve the idempotency marker before the external API call
+        if: steps.ledger.outputs.duplicate != 'true'
+        uses: actions/github-script@v7
+        env:
+          MARKER: ${{ steps.ledger.outputs.marker }}
+          ISSUE: ${{ steps.ledger.outputs.issue }}
+          SLUG: ${{ matrix.slug }}
+        with:
+          script: |
+            let issue = Number(process.env.ISSUE);
+            if (!issue) {
+              const made = await github.rest.issues.create({owner:context.repo.owner, repo:context.repo.repo, title:'[automation] Zoho Draft ledger', body:'Automation-owned idempotency records. Do not delete.'});
+              issue = made.data.number;
+            }
+            await github.rest.issues.createComment({owner:context.repo.owner, repo:context.repo.repo, issue_number:issue, body:`draft-marker:${process.env.MARKER}\ncommit:${context.sha}\ncampaign:${process.env.SLUG}\nstate:reserved`});
+      - name: Create Zoho Campaigns Draft (never sends mail)
+        if: steps.ledger.outputs.duplicate != 'true'
+        env:
+          ZOHO_CLIENT_ID: ${{ secrets.ZOHO_CLIENT_ID }}
+          ZOHO_CLIENT_SECRET: ${{ secrets.ZOHO_CLIENT_SECRET }}
+          ZOHO_REFRESH_TOKEN: ${{ secrets.ZOHO_REFRESH_TOKEN }}
+        run: python scripts/create_zoho_draft.py --campaign-file 'campaigns/${{ matrix.slug }}/campaign.json'
+      - name: Mark the Draft as created
+        if: steps.ledger.outputs.duplicate != 'true'
+        uses: actions/github-script@v7
+        env:
+          MARKER: ${{ steps.ledger.outputs.marker }}
+          ISSUE: ${{ steps.ledger.outputs.issue }}
+          SLUG: ${{ matrix.slug }}
+        with:
+          script: |
+            let issue = Number(process.env.ISSUE);
+            if (!issue) {
+              const issues = await github.rest.issues.listForRepo({owner:context.repo.owner, repo:context.repo.repo, state:'open'});
+              issue = issues.data.find(x => x.title === '[automation] Zoho Draft ledger')?.number;
+            }
+            if (!issue) return core.setFailed('Zoho Draft ledger issue was not found');
+            await github.rest.issues.createComment({owner:context.repo.owner, repo:context.repo.repo, issue_number:issue, body:`draft-marker:${process.env.MARKER}\ncommit:${context.sha}\ncampaign:${process.env.SLUG}\nstate:created`});

@@ -14,5 +14,6 @@
   "mailing_lists": {
     "過去リスト（新）": "REPLACE_WITH_LISTKEY",
     "CRMから連携されたリスト": "REPLACE_WITH_LISTKEY"
-  }
+  },
+  "default_mailing_lists": ["REPLACE_LIST_NAME"]
 }
