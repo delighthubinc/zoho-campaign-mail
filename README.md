@@ -17,6 +17,7 @@ ChatGPT で確定したメール原稿と画像素材から HTML メールを生
 │       ├── mail.html            # 公開する生成済みメール
 │       └── images/              # 公開する画像
 ├── config/
+│   ├── email_defaults.json      # 全セミナーメール共通の公開ブランド・署名設定
 │   ├── zoho.json                # 実運用の非機密固定設定
 │   └── zoho.example.json        # 新しい環境向けの設定例
 ├── scripts/

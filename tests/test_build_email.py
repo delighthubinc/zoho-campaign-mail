@@ -8,6 +8,7 @@ import json
 import re
 import tempfile
 import unittest
+from html import escape as html_escape
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,8 +49,76 @@ class LargeSeminarTests(unittest.TestCase):
 
     def test_every_image_has_nonempty_alt(self) -> None:
         tags = re.findall(r"<img\b[^>]*>", self.rendered, re.IGNORECASE)
-        self.assertEqual(len(tags), 3)
+        self.assertEqual(len(tags), 5)
         self.assertTrue(all(re.search(r'alt="[^"]+"', tag) for tag in tags))
+
+    def test_seminar_common_branding_and_recipient_copy(self) -> None:
+        defaults = build.load_json(build.EMAIL_DEFAULTS)
+        self.assertEqual(self.rendered.count(defaults["logo_url"]), 1)
+        self.assertEqual(self.rendered.count(defaults["contact_image_url"]), 1)
+        self.assertIn("$[UD:COMPANY_NAME||]$　$[UD:LAST_NAME||]$様", self.rendered)
+        self.assertNotIn("$[UD:COMPANY_NAME&#x27;", self.rendered)
+        for line in defaults["recipient_notice"].splitlines():
+            self.assertIn(line, self.rendered)
+        self.assertIn('href="mailto:contact@delight-hub.jp"', self.rendered)
+        self.assertIn('href="https://delight-hub.jp/"', self.rendered)
+        self.assertIn("企画部 天野 晴香", self.rendered)
+
+    def test_banner_links_to_the_exact_same_url_as_ctas(self) -> None:
+        expected_href = html_escape(build.build_cta_url(self.content["cta"]))
+        raw_banner_url = self.content["banner"]["url"]
+        banner_url = re.escape(raw_banner_url)
+        self.assertEqual(self.rendered.count(raw_banner_url), 1)
+        self.assertRegex(
+            self.rendered,
+            rf'<a href="{re.escape(expected_href)}"[^>]*>\s*<img src="{banner_url}"',
+        )
+        self.assertEqual(self.rendered.count(f'href="{expected_href}"'), 3)
+        self.assertIn("※バナーをクリックすると、イベントページに遷移します。", self.rendered)
+
+    def test_common_blocks_are_unique_and_in_the_required_order(self) -> None:
+        defaults = build.load_json(build.EMAIL_DEFAULTS)
+        recipient = defaults["zoho_recipient"]
+        banner_url = self.content["banner"]["url"]
+        banner_notice = defaults["banner_notice"]
+        signature_start = "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
+
+        self.assertEqual(self.rendered.count(defaults["logo_url"]), 1)
+        self.assertEqual(self.rendered.count(recipient), 1)
+        self.assertEqual(self.rendered.count(banner_url), 1)
+        self.assertEqual(self.rendered.count(defaults["contact_image_url"]), 1)
+        self.assertEqual(self.rendered.count(defaults["company_name"]), 1)
+        self.assertEqual(self.rendered.count(signature_start), 2)
+        self.assertNotIn("お問い合わせ：", self.rendered)
+        self.assertNotIn("{{FOOTER}}", self.rendered)
+
+        positions = [
+            self.rendered.index(defaults["logo_url"]),
+            self.rendered.index(recipient),
+            self.rendered.index(defaults["recipient_notice"].splitlines()[1]),
+            self.rendered.index(banner_url),
+            self.rendered.index(banner_notice),
+            self.rendered.index(self.content["intro"][0]),
+            self.rendered.index(defaults["contact_image_url"]),
+        ]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_seminar_templates_have_no_legacy_banner_or_footer_placeholder(self) -> None:
+        base = build.BASE_TEMPLATE.read_text(encoding="utf-8")
+        layout = build.TEMPLATE_FILES["large_seminar"].read_text(encoding="utf-8")
+        self.assertNotIn("{{BANNER}}", base + layout)
+        self.assertNotIn("{{FOOTER}}", base + layout)
+        self.assertNotIn("お問い合わせ：", base + layout)
+
+    def test_checked_in_forum_html_matches_current_generator(self) -> None:
+        checked_in = (ROOT / "campaigns/forum-20260910/mail.html").read_text(encoding="utf-8")
+        self.assertEqual(checked_in, self.rendered)
+
+    def test_common_information_is_not_duplicated_in_campaign_data(self) -> None:
+        for key in ("company_name", "department", "contact_name", "postal_code",
+                    "address", "logo_url", "contact_image_url", "zoho_recipient",
+                    "recipient_notice"):
+            self.assertNotIn(key, self.content)
 
     def test_campaign_json_is_serializable_without_html_fragments(self) -> None:
         serialized = json.dumps(self.content, ensure_ascii=False)
@@ -75,7 +144,7 @@ class LargeSeminarTests(unittest.TestCase):
             build.TEMPLATE_FILES["large_seminar"].read_text(encoding="utf-8"),
         )
         expected = "https://events.example.jp/forum?plan=free&amp;utm_source=zoho&amp;utm_medium=email&amp;utm_campaign=forum_20260910#apply"
-        self.assertEqual(rendered.count(expected), 2)
+        self.assertEqual(rendered.count(expected), 3)
 
 
 class LegacyTemplateTests(unittest.TestCase):

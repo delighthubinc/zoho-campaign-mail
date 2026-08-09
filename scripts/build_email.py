@@ -14,6 +14,7 @@ from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlparse, urlunpa
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TEMPLATE = ROOT / "templates" / "email_template.html"
 BASE_TEMPLATE = ROOT / "templates" / "base" / "email.html"
+EMAIL_DEFAULTS = ROOT / "config" / "email_defaults.json"
 TEMPLATE_FILES = {
     "large_seminar": ROOT / "templates" / "seminar" / "large_seminar.html",
 }
@@ -146,7 +147,43 @@ def fill(template: str, replacements: dict[str, str]) -> str:
     return template
 
 
-def render_large_seminar(content: dict, base: str, layout: str) -> str:
+def seminar_base_replacements(defaults: dict) -> dict[str, str]:
+    """Render public, seminar-wide branding without campaign-level duplication."""
+    logo_url = validate_https_url(require_text(defaults, "logo_url"), "logo_url")
+    contact_image_url = validate_https_url(
+        require_text(defaults, "contact_image_url"), "contact_image_url"
+    )
+    corporate_site_url = validate_https_url(
+        require_text(defaults, "corporate_site_url"), "corporate_site_url"
+    )
+    email_address = require_text(defaults, "email")
+    if "@" not in email_address or any(character.isspace() for character in email_address):
+        raise ValueError("email は有効なメールアドレスで指定してください")
+    return {
+        "{{LOGO_URL}}": html.escape(logo_url, quote=True),
+        "{{LOGO_ALT}}": html.escape(require_text(defaults, "logo_alt"), quote=True),
+        # html.escape does not alter Zoho's $, [, ], :, | characters or the full-width space.
+        "{{ZOHO_RECIPIENT}}": html.escape(require_text(defaults, "zoho_recipient")),
+        "{{RECIPIENT_NOTICE}}": escaped_multiline(require_text(defaults, "recipient_notice")),
+        "{{CONTACT_IMAGE_URL}}": html.escape(contact_image_url, quote=True),
+        "{{CONTACT_IMAGE_ALT}}": html.escape(
+            require_text(defaults, "contact_image_alt"), quote=True
+        ),
+        "{{COMPANY_NAME}}": html.escape(require_text(defaults, "company_name")),
+        "{{DEPARTMENT}}": html.escape(require_text(defaults, "department")),
+        "{{CONTACT_NAME}}": html.escape(require_text(defaults, "contact_name")),
+        "{{POSTAL_CODE}}": html.escape(require_text(defaults, "postal_code")),
+        "{{ADDRESS}}": html.escape(require_text(defaults, "address")),
+        "{{EMAIL}}": html.escape(email_address),
+        "{{EMAIL_HREF}}": html.escape(f"mailto:{email_address}", quote=True),
+        "{{CORPORATE_SITE_URL}}": html.escape(corporate_site_url, quote=True),
+    }
+
+
+def render_large_seminar(
+    content: dict, base: str, layout: str, defaults: dict | None = None
+) -> str:
+    defaults = defaults or load_json(EMAIL_DEFAULTS)
     subject = require_text(content, "subject")
     preheader = require_text(content, "preheader")
     intro = require_list(content, "intro")
@@ -190,22 +227,28 @@ def render_large_seminar(content: dict, base: str, layout: str) -> str:
         f'<td valign="top" style="padding:9px 0;border-bottom:1px solid #d8dee8;font-size:14px;line-height:1.6;color:#26354a;">{html.escape(str(v))}</td></tr>'
         for k, v in event_info.items()
     )
-    footer = content.get("footer")
-    if not isinstance(footer, dict):
-        raise ValueError("footer はobjectで指定してください")
-    footer_html = f'{html.escape(require_text(footer, "company"))}<br>お問い合わせ：<a href="mailto:{html.escape(require_text(footer, "email"), quote=True)}" style="color:#c5a253;text-decoration:none;">{html.escape(require_text(footer, "email"))}</a>'
     event_date = require_text(content, "event_date")
     event_note = require_text(content, "event_note")
-    cta = cta_table(content.get("cta"))
+    cta_data = content.get("cta")
+    cta_url = build_cta_url(cta_data)
+    cta = cta_table(cta_data)
+    banner = image_tag(content.get("banner"), 640, "banner")
+    banner_link = (
+        f'<a href="{html.escape(cta_url, quote=True)}" style="display:block;text-decoration:none;">'
+        f'{banner}</a>'
+    )
     layout = fill(layout, {
-        "{{BANNER}}": image_tag(content.get("banner"), 640, "banner"),
+        "{{BANNER_LINK}}": banner_link,
+        "{{BANNER_NOTICE}}": html.escape(require_text(defaults, "banner_notice")),
         "{{INTRO}}": intro_html, "{{EVENT_DATE}}": html.escape(event_date),
         "{{EVENT_NOTE}}": html.escape(event_note), "{{TOP_CTA}}": cta,
         "{{SPEAKERS}}": "".join(speaker_cells), "{{BENEFITS}}": benefits_html,
         "{{EVENT_INFO}}": event_rows, "{{BOTTOM_CTA}}": cta,
     })
-    return fill(base, {"{{TITLE}}": html.escape(subject), "{{PREHEADER}}": html.escape(preheader),
-                       "{{CONTENT}}": layout, "{{FOOTER}}": footer_html}).rstrip() + "\n"
+    replacements = seminar_base_replacements(defaults)
+    replacements.update({"{{TITLE}}": html.escape(subject),
+                         "{{PREHEADER}}": html.escape(preheader), "{{CONTENT}}": layout})
+    return fill(base, replacements).rstrip() + "\n"
 
 
 def render(content: dict, template: str, image_base_url: str) -> str:

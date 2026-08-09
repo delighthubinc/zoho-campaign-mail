@@ -1,0 +1,16 @@
+{
+  "company_name": "株式会社Delight Hub",
+  "department": "企画部",
+  "contact_name": "天野 晴香",
+  "postal_code": "〒107-0062",
+  "address": "東京都港区南青山3-1-36 青山丸竹ビル6F",
+  "email": "contact@delight-hub.jp",
+  "corporate_site_url": "https://delight-hub.jp/",
+  "logo_url": "https://delighthubinc.github.io/zoho-campaign-mail/assets/common/delight-hub-logo.png",
+  "logo_alt": "Delight Hub",
+  "contact_image_url": "https://delighthubinc.github.io/zoho-campaign-mail/assets/common/amano-haruka.png",
+  "contact_image_alt": "天野晴香",
+  "zoho_recipient": "$[UD:COMPANY_NAME||]$　$[UD:LAST_NAME||]$様",
+  "recipient_notice": "ーーーーー\n本メールは、\n【過去にセミナー等にお申込みいただいた方】\nに送信しております。\nーーーーー",
+  "banner_notice": "※バナーをクリックすると、イベントページに遷移します。"
+}
