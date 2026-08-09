@@ -15,13 +15,15 @@
 1. ユーザーがChatGPTへセミナーとGoogle Driveフォルダを提示する。
 2. ChatGPTが本書とGitHubの最新テンプレートを確認する。
 3. ChatGPTがDrive内の概要、過去原稿、公開用画像素材を確認する。
-4. ChatGPTが `template_type` を選択し、campaignデータ相当の情報とメール原稿を整理する。
-5. ChatGPTがGitHubと同一のテンプレートでHTMLプレビューを作り、ユーザーと文章・画像・レイアウトを調整する。
-6. ユーザーが文章とデザインをFIXする。
-7. Codexが承認済み内容をcampaignデータと画像へ反映し、既存テンプレートでHTMLを生成してテスト・PRを行う。
-8. GitHub Pagesへ公開し、ユーザーが表示を確認する。
-9. HTML確認後に限りGitHub ActionsからZoho Campaigns Draftを作成する。
-10. ユーザーがZoho Draftを最終確認し、リポジトリ外で実際の送信を判断する。
+4. ChatGPTが `template_type` を選択してメール原稿を作成する。
+5. ChatGPTがCTAの本体URLを確認し、UTMパラメータを確定する。URLが不明なら推測せずユーザーへ確認する。
+6. ChatGPTが確定したCTA情報を含むcampaignデータ相当の情報を整理する。
+7. ChatGPTがGitHubと同一のテンプレートおよび本番と同一のCTA URLでHTMLプレビューを作り、ユーザーと文章・画像・レイアウトを調整する。
+8. ユーザーが文章、CTA URL、デザインをFIXする。
+9. Codexが承認済み内容をcampaignデータと画像へ反映し、既存テンプレートでHTMLを生成してテスト・PRを行う。
+10. GitHub Pagesへ公開し、ユーザーが表示とCTA遷移を確認する。
+11. HTML確認後に限りGitHub ActionsからZoho Campaigns Draftを作成する。
+12. ユーザーがZoho Draftを最終確認し、リポジトリ外で実際の送信を判断する。
 
 ## 担当範囲
 
@@ -29,8 +31,9 @@
 
 - Google Driveの対象セミナーフォルダ、セミナー概要、過去メルマガ、公開用画像素材の確認
 - `template_type` の選択とメール原稿の作成
+- CTA本体URLの確認、UTMパラメータの確定（不明時はユーザーへ確認）
 - campaignデータ相当の情報整理
-- GitHub上の最新テンプレートを使用したHTMLプレビューの作成
+- GitHub上の最新テンプレートと本番CTA URLを使用したHTMLプレビューの作成
 - ユーザーとの文章・画像・デザイン調整と、承認内容の確定
 
 ### Codex / GitHub
@@ -76,6 +79,46 @@ Actionsはメール送信、テスト送信、予約送信を行いません。
 ChatGPTのプレビューとCodexの本番生成は、いずれも上記GitHubテンプレートを参照します。
 
 campaign JSONはHTMLではなく、イベント固有の `template_type`、`subject`、`preheader`、`banner`、`intro`、`speakers`、`benefits`、`event_info`、`cta`、`footer` 等を保持します。確定済みcampaignデータから `scripts/build_email.py` で `mail.html` を生成します。
+
+## CTA URL / UTMの正式ルール
+
+### 確定のタイミング
+
+- ChatGPTはHTMLプレビューを作る前に、CTAの本体URL、`utm_source`、`utm_medium`、`utm_campaign`、必要な場合は `utm_content` をユーザーと確定します。
+- HTMLプレビューから本番HTMLまで同じ本番CTA URLを使用します。`#`、空文字、`example.com`、存在を確認できないURLなどの仮リンクを本番 `campaign.json` / `mail.html` に残しません。
+- 本体URLが不明な場合、ChatGPTやCodexはURLを推測・創作せず、ユーザー確認待ちとして報告します。
+
+### UTM値
+
+- 標準値は `utm_source=zoho`、`utm_medium=email` です。
+- `utm_campaign` はキャンペーンごとに必ず確定し、`campaign_slug` と整合する機械可読で一貫した値にします。例: slug `forum-20260910` に対して `forum_20260910`。
+- `utm_content` は任意です。同じ遷移先を位置別に計測する場合に `hero_cta`、`bottom_cta`、`banner` などを使用できます。指定しなければ各位置で同じCTA URLを使用します。
+
+### campaign JSONの推奨形式
+
+新規・移行済みcampaignでは完成URLを手入力せず、次の構造で保持します。
+
+```json
+{
+  "cta": {
+    "label": "無料で参加申し込み",
+    "base_url": "https://events.example.jp/seminar/",
+    "utm": {
+      "source": "zoho",
+      "medium": "email",
+      "campaign": "forum_20260910"
+    }
+  }
+}
+```
+
+`utm.content` は任意です。従来の `{"label": "詳細を見る", "url": "https://..."}` も引き続き受け付けるため、既存campaignは段階的に移行できます。`url` と `base_url` は同時指定せず、どちらか一方を指定します。
+
+### URL生成と検証
+
+`scripts/build_email.py` は標準ライブラリのURL解析・クエリ生成機能を使い、既存クエリを維持してUTMを追加し、値をURLエンコードします。フラグメントがある場合、クエリは `#...` より前に配置します。同名の生成対象UTMが本体URLに既にある場合は、campaignデータで確定した値へ置き換えます。
+
+生成時にはCTAが空でない絶対 `http://` / `https://` URLであり、ホスト名を持ち、`#` 単独などの仮リンクでないこと、および指定したUTMが生成結果に含まれることを検証します。外部通信による存在確認はHTML生成の必須処理にしません。必要な場合は、GitHub Pages公開後に別工程（ActionsのHTTPステータス確認等）として行います。
 
 ## セキュリティと公開ゲート
 
