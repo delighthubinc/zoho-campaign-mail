@@ -1,0 +1,50 @@
+name: Import Drive Image Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DRIVE_FILE_ID: 18xGRVkAAn7IAwGaF0AZ4gz8pp82R_uaU
+      DEST_PATH: campaigns/drive-image-test/images/20260910bannerA-2.png
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download public Google Drive image
+        run: |
+          mkdir -p "$(dirname "$DEST_PATH")"
+          curl --fail --location --silent --show-error \
+            "https://drive.usercontent.google.com/download?id=${DRIVE_FILE_ID}&export=download&confirm=t" \
+            --output "$DEST_PATH"
+
+      - name: Validate PNG
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("campaigns/drive-image-test/images/20260910bannerA-2.png")
+          data = p.read_bytes()
+          if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+              raise SystemExit("Downloaded file is not a PNG")
+          print(f"PNG validation OK: {p} ({len(data)} bytes)")
+          PY
+
+      - name: Commit imported image
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$DEST_PATH"
+          if git diff --cached --quiet; then
+            echo "No image change to commit."
+            exit 0
+          fi
+          git commit -m "Import Drive image test asset"
+          git push origin HEAD:${GITHUB_REF_NAME}
