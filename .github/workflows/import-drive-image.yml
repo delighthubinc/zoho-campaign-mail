@@ -1,0 +1,82 @@
+name: Import Drive Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      campaign_slug:
+        description: Destination campaign slug
+        required: true
+        type: string
+      drive_file_id:
+        description: Public Google Drive file ID
+        required: true
+        type: string
+      filename:
+        description: Destination image filename (.png, .jpg, .jpeg, .gif or .webp)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  import-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CAMPAIGN_SLUG: ${{ inputs.campaign_slug }}
+      DRIVE_FILE_ID: ${{ inputs.drive_file_id }}
+      FILENAME: ${{ inputs.filename }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate inputs
+        id: destination
+        run: |
+          if [[ ! "$DRIVE_FILE_ID" =~ ^[A-Za-z0-9_-]+$ ]]; then
+            echo "Error: drive_file_id contains invalid characters." >&2
+            exit 1
+          fi
+          destination="$(python scripts/import_drive_image.py \
+            --campaign-slug "$CAMPAIGN_SLUG" \
+            --filename "$FILENAME" \
+            --print-destination)"
+          echo "path=$destination" >> "$GITHUB_OUTPUT"
+
+      - name: Download public Google Drive image
+        env:
+          DOWNLOAD_PATH: ${{ runner.temp }}/drive-image-download
+          HEADER_PATH: ${{ runner.temp }}/drive-image-headers
+        run: |
+          curl --fail --location --silent --show-error \
+            --dump-header "$HEADER_PATH" \
+            "https://drive.usercontent.google.com/download?id=${DRIVE_FILE_ID}&export=download&confirm=t" \
+            --output "$DOWNLOAD_PATH"
+
+      - name: Validate and install image
+        env:
+          DOWNLOAD_PATH: ${{ runner.temp }}/drive-image-download
+          HEADER_PATH: ${{ runner.temp }}/drive-image-headers
+        run: |
+          python scripts/import_drive_image.py \
+            --campaign-slug "$CAMPAIGN_SLUG" \
+            --filename "$FILENAME" \
+            --download "$DOWNLOAD_PATH" \
+            --headers "$HEADER_PATH"
+
+      - name: Commit imported image
+        env:
+          DEST_PATH: ${{ steps.destination.outputs.path }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "$DEST_PATH"
+          if git diff --cached --quiet; then
+            echo "No image change to commit."
+            exit 0
+          fi
+          git commit -m "Import Drive image for ${CAMPAIGN_SLUG}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
