@@ -5,6 +5,8 @@ ChatGPT で確定したメール原稿と画像素材から HTML メールを生
 > [!IMPORTANT]
 > このリポジトリには、送信、予約送信、既存キャンペーンの更新機能はありません。`create_zoho_draft.py` が呼び出す Zoho Campaigns API は `createCampaign` だけです。
 
+メール制作におけるChatGPT、Codex、GitHub Actions、ユーザーの役割と承認フローは、正本である [メール生成 正式運用ルール](docs/MAIL_GENERATION_RULES.md) を参照してください。
+
 ## ディレクトリ構成
 
 ```text
@@ -21,7 +23,10 @@ ChatGPT で確定したメール原稿と画像素材から HTML メールを生
 │   ├── build_email.py           # 原稿から mail.html を生成
 │   ├── publish_images.py        # 画像を公開ディレクトリへ配置
 │   └── create_zoho_draft.py     # Zoho Campaigns Draft を作成
-├── templates/email_template.html
+├── templates/
+│   ├── base/email.html           # セミナー共通の幅・フォント・フッター・レスポンシブ基盤
+│   ├── seminar/large_seminar.html # 大型セミナーのブロック順とデザイン
+│   └── email_template.html       # template_type未指定時の従来テンプレート
 ├── .env.example
 └── .gitignore
 ```
@@ -93,6 +98,18 @@ python3 scripts/build_email.py \
 ```
 
 出力先は `campaigns/2026-example/mail.html` です。既存ファイルを置き換える場合だけ `--overwrite` を付けます。原稿文字列はHTMLとして解釈せずエスケープされ、段落内の改行だけが `<br>` に変換されます。
+
+### セミナーテンプレート
+
+`campaign.json` の `template_type` により構成を選択します。正式な種別と制作・承認フローの詳細は [メール生成 正式運用ルール](docs/MAIL_GENERATION_RULES.md) を参照してください。不動産未来フォーラム2026は次のコマンドで再生成できます。
+
+```bash
+python3 scripts/build_email.py \
+  --campaign-slug forum-20260910 \
+  --content campaigns/forum-20260910/campaign.json \
+  --config config/zoho.json \
+  --overwrite
+```
 
 ## 3. GitHub Pagesへ公開する
 
