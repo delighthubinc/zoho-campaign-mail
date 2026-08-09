@@ -9,6 +9,8 @@ import json
 import os
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -45,6 +47,7 @@ class DraftPayloadTests(unittest.TestCase):
     def test_operational_fixed_values_and_content_url(self) -> None:
         payload = draft.build_payload(self.config, self.args)
 
+        self.assertEqual(payload["resfmt"], "JSON")
         self.assertEqual(payload["topicId"], "17155000000008017")
         self.assertEqual(payload["from_name"], "天野晴香／株式会社Delight Hub")
         self.assertEqual(payload["from_email"], "h-amano01@delight-hub.jp")
@@ -58,8 +61,70 @@ class DraftPayloadTests(unittest.TestCase):
             self.config, payload, self.args.campaign_slug, self.args.mailing_list
         )
         self.assertEqual(summary["campaign_slug"], "2026-example")
+        self.assertEqual(summary["resfmt"], "JSON")
         for secret_name in (*draft.SECRET_NAMES, "access_token"):
             self.assertNotIn(secret_name, json.dumps(summary))
+
+    def test_dry_run_prints_resfmt_without_loading_secrets(self) -> None:
+        argv = [
+            "create_zoho_draft.py", "--campaign-slug", self.args.campaign_slug,
+            "--campaign-name", self.args.campaign_name, "--subject", self.args.subject,
+            "--mailing-list", self.args.mailing_list[0], "--dry-run",
+        ]
+        output = StringIO()
+        with patch.object(draft.sys, "argv", argv), patch.object(
+            draft, "load_secrets", side_effect=AssertionError("must not load secrets")
+        ), redirect_stdout(output):
+            self.assertEqual(draft.main(), 0)
+        self.assertIn('"resfmt": "JSON"', output.getvalue())
+
+    def test_numeric_and_string_success_codes_are_accepted(self) -> None:
+        for code in (200, "200"):
+            with self.subTest(code=code):
+                draft.validate_create_response({"code": code})
+
+    def test_numeric_and_string_business_error_codes_are_rejected(self) -> None:
+        for code in (1001, "1001"):
+            with self.subTest(code=code):
+                with self.assertRaises(draft.DraftError) as caught:
+                    draft.validate_create_response(
+                        {"code": code, "message": "resfmt pattern doesnot match", "uri": draft.CREATE_CAMPAIGN_PATH}
+                    )
+                message = str(caught.exception)
+                self.assertIn(f"code={code}", message)
+                self.assertIn("resfmt pattern doesnot match", message)
+                self.assertIn(draft.CREATE_CAMPAIGN_PATH, message)
+
+    def test_api_error_exit_is_one_and_all_oauth_values_are_redacted(self) -> None:
+        secrets = {
+            "ZOHO_CLIENT_ID": "client-id-sensitive",
+            "ZOHO_CLIENT_SECRET": "client-secret-sensitive",
+            "ZOHO_REFRESH_TOKEN": "refresh-token-sensitive",
+        }
+        token = "access-token-sensitive"
+        response = {
+            "code": 1001,
+            "message": " ".join((*secrets.values(), token)),
+            "uri": draft.CREATE_CAMPAIGN_PATH,
+        }
+        argv = [
+            "create_zoho_draft.py", "--campaign-slug", self.args.campaign_slug,
+            "--campaign-name", self.args.campaign_name, "--subject", self.args.subject,
+            "--mailing-list", self.args.mailing_list[0],
+        ]
+        stdout, stderr = StringIO(), StringIO()
+        with patch.object(draft.sys, "argv", argv), patch.object(
+            draft, "load_secrets", return_value=secrets
+        ), patch.object(draft, "access_token", return_value=token), patch.object(
+            draft, "request_json", return_value=response
+        ), redirect_stdout(stdout), redirect_stderr(stderr):
+            self.assertEqual(draft.main(), 1)
+
+        combined = stdout.getvalue() + stderr.getvalue()
+        for secret in (*secrets.values(), token):
+            self.assertNotIn(secret, combined)
+        self.assertIn("code=1001", combined)
+        self.assertIn(draft.CREATE_CAMPAIGN_PATH, combined)
 
     def test_environment_secrets_take_priority_over_dotenv(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
