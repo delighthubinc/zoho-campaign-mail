@@ -72,13 +72,24 @@ Actionsはメール送信、テスト送信、予約送信を行いません。
 
 ## テンプレートとcampaignデータ
 
-- `templates/base/email.html`: メール幅、基本フォント、背景、フッター、レスポンシブ対応などの共通基盤
+- `templates/base/email.html`: 全セミナーメール共通のロゴ、宛名、配信対象注意書き、基本スタイル、署名、レスポンシブ対応
 - `templates/seminar/large_seminar.html`: `large_seminar` のブロック順、余白、配色、情報階層
 - `templates/email_template.html`: `template_type` を持たない従来形式との後方互換用
+- `config/email_defaults.json`: 会社情報、担当者情報、共通画像URL、Zoho宛名タグ、共通注意書き（公開情報のみ）
 
 ChatGPTのプレビューとCodexの本番生成は、いずれも上記GitHubテンプレートを参照します。
 
-campaign JSONはHTMLではなく、イベント固有の `template_type`、`subject`、`preheader`、`banner`、`intro`、`speakers`、`benefits`、`event_info`、`cta`、`footer` 等を保持します。確定済みcampaignデータから `scripts/build_email.py` で `mail.html` を生成します。
+campaign JSONはHTMLではなく、イベント固有の `template_type`、`subject`、`preheader`、`banner`、`intro`、`speakers`、`benefits`、`event_info`、`cta` 等を保持します。会社情報や署名をcampaignごとにコピーしません。確定済みcampaignデータから `scripts/build_email.py` で `mail.html` を生成します。
+
+## 全セミナーメール共通仕様
+
+- 最上部に `assets/common/delight-hub-logo.png` のDelight Hubロゴを自然なサイズで1回表示します。
+- ロゴ下の宛名は `$[UD:COMPANY_NAME||]$　$[UD:LAST_NAME||]$様` をそのまま出力します。HTML生成処理はZohoタグと全角スペースを壊してはなりません。
+- 宛名直下に、過去にセミナー等へ申し込んだ方を配信対象とする共通注意書きを本文より小さく、可読性のあるサイズで表示します。
+- campaignのバナー画像は、既存の `build_cta_url()` が返すCTAと完全に同じ本番URLへのリンクにします。バナー直下には、クリックでイベントページへ遷移する旨を表示します。バナー専用のURL生成ロジックや仮URLは使用しません。
+- 最下部には `assets/common/amano-haruka.png`、株式会社Delight Hub、企画部 天野 晴香、郵便番号、住所、`mailto:contact@delight-hub.jp`、`https://delight-hub.jp/` を含む共通署名を表示します。
+- 共通画像は `assets/common/` の正本をGitHub Pages URLで参照し、campaignディレクトリへ複製しません。会社、担当者、共通画像、宛名、注意書きは `config/email_defaults.json` で一元管理し、campaign JSONへコピーしません。
+- これらは `large_seminar` 固有ではなくbaseの責務です。将来の `standard_seminar` も同じbaseを経由して自動適用します。seminar templateにはイベント種別固有ブロックだけを置きます。
 
 ## CTA URL / UTMの正式ルール
 
