@@ -41,7 +41,9 @@ jobs:
             const access = await github.rest.repos.getCollaboratorPermissionLevel({
               owner: context.repo.owner, repo: context.repo.repo, username: context.actor
             });
-            if (access.data.user.permission !== 'admin') {
+            // The endpoint returns the effective repository permission at the
+            // response top level. `data.user` is only the user object.
+            if (access.data.permission !== 'admin') {
               return core.setFailed('Only repository administrators may run Draft recovery');
             }
       - uses: actions/checkout@v4

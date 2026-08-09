@@ -15,7 +15,8 @@ class V2WorkflowSafetyTests(unittest.TestCase):
     def test_recovery_is_admin_gated_and_draft_only(self):
         workflow = (ROOT / ".github/workflows/emergency-recover-zoho-draft.yml").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
-        self.assertIn("permission !== 'admin'", workflow)
+        self.assertIn("access.data.permission !== 'admin'", workflow)
+        self.assertNotIn("access.data.user.permission", workflow)
         self.assertIn("CREATE_DRAFT_RECOVERY", workflow)
         self.assertIn("state:recovery-attempt", workflow)
         self.assertIn("failed_commit_sha:", workflow)
