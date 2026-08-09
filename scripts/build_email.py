@@ -13,6 +13,10 @@ from urllib.parse import quote, urljoin, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TEMPLATE = ROOT / "templates" / "email_template.html"
+BASE_TEMPLATE = ROOT / "templates" / "base" / "email.html"
+TEMPLATE_FILES = {
+    "large_seminar": ROOT / "templates" / "seminar" / "large_seminar.html",
+}
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
 IMAGE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 PLACEHOLDER_RE = re.compile(r"{{[A-Z_]+}}")
@@ -44,6 +48,106 @@ def validate_https_url(value: str, label: str) -> str:
     if parsed.scheme != "https" or not parsed.netloc:
         raise ValueError(f"{label} は有効なHTTPS URLで指定してください")
     return value
+
+
+def require_list(data: dict, key: str) -> list:
+    value = data.get(key)
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"{key} は空でない配列で指定してください")
+    return value
+
+
+def image_tag(image: dict, width: int, label: str) -> str:
+    if not isinstance(image, dict):
+        raise ValueError(f"{label} はobjectで指定してください")
+    url = validate_https_url(require_text(image, "url"), f"{label}.url")
+    alt = require_text(image, "alt")
+    return (f'<img src="{html.escape(url, quote=True)}" width="{width}" alt="{html.escape(alt, quote=True)}" '
+            f'style="display:block;width:100%;max-width:{width}px;height:auto;border:0;">')
+
+
+def cta_table(cta: dict) -> str:
+    if not isinstance(cta, dict):
+        raise ValueError("cta はobjectで指定してください")
+    label = require_text(cta, "label")
+    url = validate_https_url(require_text(cta, "url"), "cta.url")
+    return ('<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" '
+            'style="margin:0 auto;border-collapse:collapse;"><tr><td align="center" bgcolor="#c5a253" '
+            'style="border-radius:4px;background-color:#c5a253;">'
+            f'<a href="{html.escape(url, quote=True)}" style="display:inline-block;padding:16px 42px;'
+            'font-size:16px;line-height:1.2;font-weight:700;color:#ffffff;text-decoration:none;'
+            f'border:1px solid #c5a253;border-radius:4px;">{html.escape(label)}</a></td></tr></table>')
+
+
+def fill(template: str, replacements: dict[str, str]) -> str:
+    for marker, value in replacements.items():
+        template = template.replace(marker, value)
+    leftovers = sorted(set(PLACEHOLDER_RE.findall(template)))
+    if leftovers:
+        raise ValueError(f"テンプレートに未解決のプレースホルダーがあります: {', '.join(leftovers)}")
+    return template
+
+
+def render_large_seminar(content: dict, base: str, layout: str) -> str:
+    subject = require_text(content, "subject")
+    preheader = require_text(content, "preheader")
+    intro = require_list(content, "intro")
+    if not all(isinstance(item, str) and item.strip() for item in intro):
+        raise ValueError("intro の各項目は空でない文字列で指定してください")
+    intro_html = "".join(
+        f'<p style="margin:0 0 18px;font-size:16px;line-height:1.9;color:#26354a;">{escaped_multiline(p.strip())}</p>'
+        for p in intro
+    )
+
+    speakers = require_list(content, "speakers")
+    if len(speakers) != 2 or not all(isinstance(s, dict) for s in speakers):
+        raise ValueError("large_seminar の speakers は2名のobject配列で指定してください")
+    speaker_cells = []
+    for index, speaker in enumerate(speakers):
+        name, company = require_text(speaker, "name"), require_text(speaker, "company")
+        title, subtitle = require_text(speaker, "title"), require_text(speaker, "subtitle")
+        photo = image_tag(speaker.get("image"), 244, f"speakers[{index}].image")
+        speaker_cells.append(
+            '<td class="speaker-column" width="50%" valign="top" style="width:50%;padding:0 8px 20px;">'
+            f'{photo}<p style="margin:16px 0 3px;font-size:20px;line-height:1.4;font-weight:700;color:#102a4c;">{html.escape(name)}</p>'
+            f'<p style="margin:0 0 16px;font-size:12px;line-height:1.6;color:#657184;">{html.escape(company)}</p>'
+            f'<p style="margin:0 0 8px;font-size:17px;line-height:1.55;font-weight:700;color:#102a4c;">{html.escape(title)}</p>'
+            f'<p style="margin:0;font-size:13px;line-height:1.7;color:#4b5563;">{html.escape(subtitle)}</p></td>'
+        )
+
+    benefits = require_list(content, "benefits")
+    if not all(isinstance(item, str) and item.strip() for item in benefits):
+        raise ValueError("benefits の各項目は空でない文字列で指定してください")
+    benefits_html = "".join(
+        f'<tr><td valign="top" style="padding:0 12px 14px 0;font-size:16px;line-height:1.7;font-weight:700;color:#c5a253;">{i:02d}</td>'
+        f'<td style="padding:0 0 14px;font-size:15px;line-height:1.7;color:#26354a;">{html.escape(item.strip())}</td></tr>'
+        for i, item in enumerate(benefits, 1)
+    )
+
+    event_info = content.get("event_info")
+    if not isinstance(event_info, dict) or not event_info:
+        raise ValueError("event_info は空でないobjectで指定してください")
+    event_rows = "".join(
+        f'<tr><th width="88" valign="top" align="left" style="padding:9px 12px 9px 0;border-bottom:1px solid #d8dee8;font-size:14px;line-height:1.6;color:#102a4c;">{html.escape(str(k))}</th>'
+        f'<td valign="top" style="padding:9px 0;border-bottom:1px solid #d8dee8;font-size:14px;line-height:1.6;color:#26354a;">{html.escape(str(v))}</td></tr>'
+        for k, v in event_info.items()
+    )
+    footer = content.get("footer")
+    if not isinstance(footer, dict):
+        raise ValueError("footer はobjectで指定してください")
+    footer_html = f'{html.escape(require_text(footer, "company"))}<br>お問い合わせ：<a href="mailto:{html.escape(require_text(footer, "email"), quote=True)}" style="color:#c5a253;text-decoration:none;">{html.escape(require_text(footer, "email"))}</a>'
+    event_date = require_text(content, "event_date")
+    event_note = require_text(content, "event_note")
+    cta = cta_table(content.get("cta"))
+    layout = fill(layout, {
+        "{{BANNER}}": image_tag(content.get("banner"), 640, "banner"),
+        "{{INTRO}}": intro_html, "{{EVENT_DATE}}": html.escape(event_date),
+        "{{EVENT_NOTE}}": html.escape(event_note), "{{TOP_CTA}}": cta,
+        "{{SPEAKERS}}": "".join(speaker_cells), "{{BENEFITS}}": benefits_html,
+        "{{EVENT_INFO}}": event_rows, "{{BOTTOM_CTA}}": cta,
+    })
+    return fill(base, {"{{TITLE}}": html.escape(subject), "{{PREHEADER}}": html.escape(preheader),
+                       "{{CONTENT}}": layout, "{{FOOTER}}": footer_html}).rstrip() + "\n"
 
 
 def render(content: dict, template: str, image_base_url: str) -> str:
@@ -112,14 +216,18 @@ def render(content: dict, template: str, image_base_url: str) -> str:
     return template.rstrip() + "\n"
 
 
-def parse_args() -> argparse.Namespace:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="FIX済み原稿からHTMLメールを生成します（外部通信なし）")
     parser.add_argument("--campaign-slug", required=True)
     parser.add_argument("--content", required=True, type=Path, help="原稿JSON")
     parser.add_argument("--config", default=ROOT / "config" / "zoho.json", type=Path)
-    parser.add_argument("--template", default=DEFAULT_TEMPLATE, type=Path)
+    parser.add_argument("--template", type=Path, help="従来形式テンプレートの上書き指定")
     parser.add_argument("--overwrite", action="store_true")
-    return parser.parse_args()
+    return parser
+
+
+def parse_args() -> argparse.Namespace:
+    return build_parser().parse_args()
 
 
 def main() -> int:
@@ -136,11 +244,22 @@ def main() -> int:
         image_base = urljoin(pages_base.rstrip("/") + "/", f"campaigns/{args.campaign_slug}/images/")
         if not urlparse(image_base).path.startswith(repo_path):
             raise ValueError("画像URLがGitHub Pagesの公開パス外です")
-        template = args.template.read_text(encoding="utf-8")
         output = ROOT / "campaigns" / args.campaign_slug / "mail.html"
         if output.exists() and not args.overwrite:
             raise ValueError(f"出力先が既に存在します（置換する場合は --overwrite）: {output}")
-        built = render(content, template, image_base)
+        template_type = content.get("template_type")
+        if template_type is None:
+            template = (args.template or DEFAULT_TEMPLATE).read_text(encoding="utf-8")
+            built = render(content, template, image_base)
+        else:
+            if args.template:
+                raise ValueError("template_type 指定時は --template を併用できません")
+            if template_type not in TEMPLATE_FILES:
+                supported = ", ".join(sorted(TEMPLATE_FILES))
+                raise ValueError(f"未対応の template_type です: {template_type}（対応: {supported}）")
+            base = BASE_TEMPLATE.read_text(encoding="utf-8")
+            layout = TEMPLATE_FILES[template_type].read_text(encoding="utf-8")
+            built = render_large_seminar(content, base, layout)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(built, encoding="utf-8")
         print(f"生成しました: {output.relative_to(ROOT)}")
