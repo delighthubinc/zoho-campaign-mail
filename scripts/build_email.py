@@ -9,7 +9,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from urllib.parse import quote, urljoin, urlparse
+from urllib.parse import parse_qsl, quote, urlencode, urljoin, urlparse, urlunparse
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TEMPLATE = ROOT / "templates" / "email_template.html"
@@ -50,6 +50,64 @@ def validate_https_url(value: str, label: str) -> str:
     return value
 
 
+def validate_cta_url(value: str, label: str = "cta URL") -> str:
+    """Validate a CTA URL without making an external request."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} は空でない文字列で指定してください")
+    value = value.strip()
+    if any(character.isspace() or ord(character) < 32 for character in value):
+        raise ValueError(f"{label} は有効なHTTP(S) URLで指定してください")
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or not parsed.hostname:
+        raise ValueError(f"{label} は有効なHTTP(S) URLで指定してください")
+    if parsed.username or parsed.password:
+        raise ValueError(f"{label} に認証情報を含めないでください")
+    return value
+
+
+def build_cta_url(cta: dict, utm_content: str | None = None) -> str:
+    """Resolve legacy or structured CTA data and safely add UTM parameters."""
+    if not isinstance(cta, dict):
+        raise ValueError("cta はobjectで指定してください")
+
+    has_url = "url" in cta
+    has_base_url = "base_url" in cta
+    if has_url == has_base_url:
+        raise ValueError("cta は url（従来形式）または base_url のどちらか一方を指定してください")
+    key = "url" if has_url else "base_url"
+    base_url = validate_cta_url(require_text(cta, key), f"cta.{key}")
+
+    utm = cta.get("utm")
+    if utm is None:
+        if utm_content is not None:
+            raise ValueError("utm_content を使用する場合は cta.utm を指定してください")
+        return base_url
+    if not isinstance(utm, dict):
+        raise ValueError("cta.utm はobjectで指定してください")
+    allowed = {"source", "medium", "campaign", "content"}
+    unknown = sorted(set(utm) - allowed)
+    if unknown:
+        raise ValueError(f"cta.utm に未対応の項目があります: {', '.join(unknown)}")
+    required = {name: require_text(utm, name) for name in ("source", "medium", "campaign")}
+    content = utm_content if utm_content is not None else utm.get("content")
+    if content is not None and (not isinstance(content, str) or not content.strip()):
+        raise ValueError("cta.utm.content は空でない文字列で指定してください")
+
+    parameters = {
+        "utm_source": required["source"],
+        "utm_medium": required["medium"],
+        "utm_campaign": required["campaign"],
+    }
+    if content is not None:
+        parameters["utm_content"] = content.strip()
+    parsed = urlparse(base_url)
+    query = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+             if key not in parameters]
+    query.extend(parameters.items())
+    result = urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
+    return validate_cta_url(result)
+
+
 def require_list(data: dict, key: str) -> list:
     value = data.get(key)
     if not isinstance(value, list) or not value:
@@ -70,7 +128,7 @@ def cta_table(cta: dict) -> str:
     if not isinstance(cta, dict):
         raise ValueError("cta はobjectで指定してください")
     label = require_text(cta, "label")
-    url = validate_https_url(require_text(cta, "url"), "cta.url")
+    url = build_cta_url(cta)
     return ('<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" '
             'style="margin:0 auto;border-collapse:collapse;"><tr><td align="center" bgcolor="#c5a253" '
             'style="border-radius:4px;background-color:#c5a253;">'
@@ -190,7 +248,7 @@ def render(content: dict, template: str, image_base_url: str) -> str:
         if not isinstance(cta, dict):
             raise ValueError("cta はobjectで指定してください")
         label = require_text(cta, "label")
-        url = validate_https_url(require_text(cta, "url"), "cta.url")
+        url = build_cta_url(cta)
         cta_row = (
             '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:28px;">'
             '<tr><td style="border-radius:4px;background-color:#155eef;">'
