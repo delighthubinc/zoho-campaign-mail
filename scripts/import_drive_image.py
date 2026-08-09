@@ -13,6 +13,12 @@ from pathlib import Path
 SLUG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 ALLOWED_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 GENERIC_BINARY_TYPES = {"application/octet-stream", "binary/octet-stream"}
+CONTENT_TYPES_BY_SUFFIX = {
+    ".png": {"image/png"},
+    ".jpg": {"image/jpeg", "image/jpg", "image/pjpeg"},
+    ".gif": {"image/gif"},
+    ".webp": {"image/webp"},
+}
 
 
 def destination_for(campaign_slug: str, filename: str) -> Path:
@@ -60,16 +66,15 @@ def detected_image_type(data: bytes) -> str | None:
 def validate_download(download: Path, headers: Path, filename: str) -> None:
     """Validate a downloaded response without changing the working tree."""
     content_type = response_content_type(headers.read_bytes())
-    if not content_type or not (
-        content_type.startswith("image/") or content_type in GENERIC_BINARY_TYPES
-    ):
+    expected_type = Path(filename).suffix.lower()
+    if expected_type == ".jpeg":
+        expected_type = ".jpg"
+    expected_content_types = CONTENT_TYPES_BY_SUFFIX.get(expected_type, set())
+    if not content_type or content_type not in expected_content_types | GENERIC_BINARY_TYPES:
         raise ValueError(f"unexpected HTTP Content-Type: {content_type or '(missing)'}")
 
     data = download.read_bytes()
     actual_type = detected_image_type(data)
-    expected_type = Path(filename).suffix.lower()
-    if expected_type == ".jpeg":
-        expected_type = ".jpg"
     if actual_type != expected_type:
         raise ValueError(
             f"downloaded content is not the requested image format "
