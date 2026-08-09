@@ -28,7 +28,7 @@ ChatGPT で確定したメール原稿と画像素材から HTML メールを生
 
 ## 安全方針
 
-- OAuth の `ZOHO_CLIENT_ID`、`ZOHO_CLIENT_SECRET`、`ZOHO_REFRESH_TOKEN` だけを `.env` に保存します。
+- GitHub ActionsではOAuthの `ZOHO_CLIENT_ID`、`ZOHO_CLIENT_SECRET`、`ZOHO_REFRESH_TOKEN` をRepository Secretsだけから環境変数へ渡します。ローカル実行時に限り `.env` をフォールバックとして利用できます。
 - `.env` は Git 管理しません。Access Token はファイルへ保存せず、ログにも出しません。
 - listkey、Topic ID、From、Reply-To、GitHub Pages Base URL は非機密の固定設定として JSON に保存できます。
 - 必要な Scope は `ZohoCampaigns.campaign.CREATE`、`ZohoCampaigns.campaign.READ`、`ZohoCampaigns.contact.READ` です。`ZohoCampaigns.campaign.UPDATE` は使用しません。
@@ -139,3 +139,20 @@ python3 scripts/create_zoho_draft.py \
 - 既存Draftまたはキャンペーンの更新
 - UPDATE系API
 - Google Drive API認証・ダウンロード（初期実装では未対応）
+
+## GitHub ActionsからZoho Campaigns Draftを作成する手順
+
+このworkflowが行うのは、新規Draftを作る `createCampaign` の呼び出しだけです。送信、予約送信、既存キャンペーンの更新は行いません。
+
+1. GitHubリポジトリの **Settings → Secrets and variables → Actions** で、次の3項目をRepository Secretsに登録します（値をリポジトリ内のファイルへ保存しないでください）。
+   - `ZOHO_CLIENT_ID`
+   - `ZOHO_CLIENT_SECRET`
+   - `ZOHO_REFRESH_TOKEN`
+2. HTMLメールと画像をコミット・pushし、対象の `mail.html` がGitHub Pagesへ反映されるまで待ちます。
+3. GitHubの **Actions** 画面から **Create Zoho Draft** workflowを選び、**Run workflow** を開きます。
+4. 次の入力項目を指定します。
+   - `campaign_slug`: `campaigns/<campaign_slug>/mail.html` のディレクトリ名
+   - `campaign_name`: Zoho Campaignsに表示するキャンペーン名
+   - `subject`: メールの件名
+5. **Run workflow** を押します。workflowは回帰テスト、GitHub PagesのHTTP 200確認、秘密情報を含まないDraft内容の確認を順に行ってから、固定の2配信リストを対象にDraftを作成します。Pagesが未反映の場合はDraftを作らずエラー終了します。
+6. 成功後、Zoho Campaignsを開き、作成されたDraftの件名、本文、From、Reply-To、Topic、配信リストを最終確認してください。送信操作はこのリポジトリの対象外です。

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -56,6 +57,21 @@ def load_dotenv(path: Path) -> dict[str, str]:
             value = value[1:-1]
         values[key] = value
     return values
+
+
+def load_secrets(env_file: Path) -> dict[str, str]:
+    """Load OAuth values from the environment, falling back to .env locally."""
+    secrets = {name: os.environ.get(name, "") for name in SECRET_NAMES}
+    if any(not value for value in secrets.values()):
+        dotenv_values = load_dotenv(env_file) if env_file.is_file() else {}
+        secrets = {
+            name: value or dotenv_values.get(name, "")
+            for name, value in secrets.items()
+        }
+    missing = [name for name, value in secrets.items() if not value]
+    if missing:
+        raise DraftError("環境変数または.envに必要な値がありません: " + ", ".join(missing))
+    return secrets
 
 
 def require_text(data: dict, key: str, context: str = "設定") -> str:
@@ -176,10 +192,13 @@ def access_token(config: dict, secrets: dict[str, str]) -> str:
     return token
 
 
-def redacted_summary(config: dict, payload: dict[str, str], selected_lists: list[str]) -> dict:
+def redacted_summary(
+    config: dict, payload: dict[str, str], campaign_slug: str, selected_lists: list[str]
+) -> dict:
     return {
         "operation": "createCampaign (Draft作成のみ)",
         "endpoint": config["campaigns_base_url"].rstrip("/") + CREATE_CAMPAIGN_PATH,
+        "campaign_slug": campaign_slug,
         "campaignname": payload["campaignname"],
         "subject": payload["subject"],
         "from_name": payload["from_name"],
@@ -214,15 +233,18 @@ def main() -> int:
         config = load_json(args.config)
         validate_config(config)
         payload = build_payload(config, args)
-        print(json.dumps(redacted_summary(config, payload, args.mailing_list), ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                redacted_summary(config, payload, args.campaign_slug, args.mailing_list),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         if args.dry_run:
             print("dry-run: 外部通信は行っていません。")
             return 0
 
-        secrets = load_dotenv(args.env_file)
-        missing = [name for name in SECRET_NAMES if not secrets.get(name)]
-        if missing:
-            raise DraftError(".envに必要な値がありません: " + ", ".join(missing))
+        secrets = load_secrets(args.env_file)
         token = access_token(config, secrets)
         endpoint = config["campaigns_base_url"].rstrip("/") + CREATE_CAMPAIGN_PATH
         result = request_json(endpoint, payload, {"Authorization": f"Zoho-oauthtoken {token}"})
