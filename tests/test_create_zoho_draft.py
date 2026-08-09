@@ -91,9 +91,10 @@ class DraftPayloadTests(unittest.TestCase):
                         {"code": code, "message": "resfmt pattern doesnot match", "uri": draft.CREATE_CAMPAIGN_PATH}
                     )
                 message = str(caught.exception)
-                self.assertIn(f"code={code}", message)
-                self.assertIn("resfmt pattern doesnot match", message)
-                self.assertIn(draft.CREATE_CAMPAIGN_PATH, message)
+                self.assertNotIn(str(code), message)
+                self.assertNotIn("resfmt pattern doesnot match", message)
+                self.assertNotIn(draft.CREATE_CAMPAIGN_PATH, message)
+                self.assertIn("レスポンス本文は出力しません", message)
 
     def test_api_error_exit_is_one_and_all_oauth_values_are_redacted(self) -> None:
         secrets = {
@@ -123,8 +124,8 @@ class DraftPayloadTests(unittest.TestCase):
         combined = stdout.getvalue() + stderr.getvalue()
         for secret in (*secrets.values(), token):
             self.assertNotIn(secret, combined)
-        self.assertIn("code=1001", combined)
-        self.assertIn(draft.CREATE_CAMPAIGN_PATH, combined)
+        self.assertNotIn("code=1001", combined)
+        self.assertNotIn("access-token-sensitive", combined)
 
     def test_environment_secrets_take_priority_over_dotenv(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -187,6 +188,29 @@ class DraftPayloadTests(unittest.TestCase):
         self.assertEqual(main_calls.count("redacted_summary"), 1)
         self.assertEqual(main_calls.count("load_secrets"), 1)
         self.assertNotIn("load_dotenv", main_calls)
+
+    def test_response_body_is_never_printed_and_cli_options_are_unique(self) -> None:
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        self.assertNotIn("json.dumps(result", source)
+        self.assertNotIn("message={safe_value", source)
+        tree = ast.parse(source)
+        options = [
+            node.args[0].value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "add_argument"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+            and node.args[0].value.startswith("--")
+        ]
+        self.assertEqual(len(options), len(set(options)), options)
+        self.assertEqual(
+            set(options),
+            {"--config", "--env-file", "--campaign-file", "--campaign-slug",
+             "--campaign-name", "--subject", "--mailing-list", "--dry-run"},
+        )
 
 
 if __name__ == "__main__":

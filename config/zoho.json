@@ -14,5 +14,9 @@
   "mailing_lists": {
     "過去リスト（新）": "3zed9d3e291d576c454137d73c7861ad5f164ac0b4207463f0d7d28a805d92174b",
     "CRMから連携されたリスト": "3zfc1d61d9ab39d57f34714cbbe3a168f99d03784995392a08a00ca40669125b59"
-  }
+  },
+  "default_mailing_lists": [
+    "過去リスト（新）",
+    "CRMから連携されたリスト"
+  ]
 }

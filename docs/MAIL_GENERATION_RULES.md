@@ -12,18 +12,42 @@
 
 ## 正式フロー
 
-1. ユーザーがChatGPTへセミナーとGoogle Driveフォルダを提示する。
-2. ChatGPTが本書とGitHubの最新テンプレートを確認する。
-3. ChatGPTがDrive内の概要、過去原稿、公開用画像素材を確認する。
-4. ChatGPTが `template_type` を選択してメール原稿を作成する。
-5. ChatGPTがCTAの本体URLを確認し、UTMパラメータを確定する。URLが不明なら推測せずユーザーへ確認する。
-6. ChatGPTが確定したCTA情報を含むcampaignデータ相当の情報を整理する。
-7. ChatGPTがGitHubと同一のテンプレートおよび本番と同一のCTA URLでHTMLプレビューを作り、ユーザーと文章・画像・レイアウトを調整する。
-8. ユーザーが文章、CTA URL、デザインをFIXする。
-9. Codexが承認済み内容をcampaignデータと画像へ反映し、既存テンプレートでHTMLを生成してテスト・PRを行う。
-10. GitHub Pagesへ公開し、ユーザーが表示とCTA遷移を確認する。
-11. HTML確認後に限りGitHub ActionsからZoho Campaigns Draftを作成する。
-12. ユーザーがZoho Draftを最終確認し、リポジトリ外で実際の送信を判断する。
+### Ver.2（通常のcampaign本番反映）
+
+ChatGPTで原稿・本番CTA・HTMLを承認した後は、Codex実装 → PR → Actions検証 → branch protection下のauto-merge → 同一commitのGitHub Pages deployment待機 → 公開HTML/画像/CTA検証 → Zoho Campaigns Draft自動作成で停止します。人間の承認点をChatGPT上のHTML承認と、Zoho UIで確認後の最終的な本番送信判断に集約します。
+
+1. ユーザーがChatGPTへセミナー制作を依頼する。
+2. ChatGPTが本書、GitHubの最新テンプレート、Google Driveのセミナー概要・過去原稿・公開用画像を確認する。
+3. ChatGPTが `template_type` を選択し、原稿、本番CTA・UTM、campaignデータ相当の情報、GitHubと同じテンプレートによるHTMLプレビューを作る。CTAが不明な場合は推測せず確認する。
+4. ユーザーがChatGPT上で原稿、CTA、画像、HTMLを承認する。
+5. ユーザーがCodexへ承認済み内容の実装を依頼する。
+6. Codexが承認内容をcampaign JSONと画像へ反映し、既存テンプレートで `mail.html` を生成してローカルテスト、コミット、PR作成を行う。
+7. GitHub ActionsがPRの変更範囲、全テスト、Python compile、差分、再生成一致、HTML・CTA・UTM・画像・Secret検査を行う。
+8. 通常の単一campaign反映PRでrequired checksがすべて成功し、競合がなければGitHub auto-mergeがmainへ反映する。システム・テンプレート変更PRはユーザーレビュー待ちとする。
+9. GitHub Actionsが同一commitのPages deployment完了を待ち、公開HTML、campaign識別情報、画像、CTAを自動検証する。
+10. 公開検証がすべて成功した場合だけ、GitHub ActionsがZoho Campaigns Draftを自動作成して停止する。
+11. ユーザーがZoho Campaigns上のDraftを確認し、リポジトリ外で本番送信するか最終判断する。本番送信操作は自動化しない。
+
+`PR Campaign Validation` は全unit test、全Pythonファイルのcompile、`git diff --check`、対象HTML再生成とchecked-in差分、placeholder、仮URL、Zoho差し込みタグ、CTA/UTM、バナーとCTAの同一性、共通画像およびSecretらしき値を検査します。1つの `campaigns/<slug>/campaign.json`、`mail.html`、`images/*` だけを変更し、JSONとHTMLを共に含むPRだけがauto-merge候補です。競合、required checkの失敗・未完了時はGitHub auto-mergeがマージしません。auto-mergeの操作には `GITHUB_TOKEN` を使わず、専用GitHub App installation tokenを使用します。これによりマージが作るmainのpush eventは抑止されず、後段workflowへ確実に接続します。
+
+template、workflow、script、config、docs等を含むシステム変更PR、複数campaign、対象外パス、draft PR、fork PRは自動マージしません。これらはユーザーレビューを必須とします。
+
+main反映後の `Verify Pages and Create Zoho Draft` は、固定sleepだけで進めずGitHub Deployments APIで同一commit SHAの `github-pages` deployment成功を待ちます。その後HTTP取得を再試行し、HTTP 200、UTF-8 HTML、subject、placeholder、CTA、バナー、共通ロゴ・署名画像、登壇者画像を検査し、CTAはHEAD（非対応時はGET）で到達性を確認します。
+
+公開検証に成功した場合だけ、`campaign.json` の `campaign_slug`、`subject`、本文非表示の `zoho_campaign_name` と `config/zoho.json` の `default_mailing_lists` を使い、`createCampaign` APIでDraftを作成します。手動workflow入力はありません。同一commit SHA・slug・Zoho管理名のSHA-256 markerをautomation専用GitHub IssueへAPI呼出し前に予約し、再実行時の二重作成をfail-closedで防ぎます。API失敗後も自動再作成せず、ledgerを人間が調査します。workflow concurrencyも同一SHAの同時実行を直列化します。
+
+OAuth値は `ZOHO_CLIENT_ID`、`ZOHO_CLIENT_SECRET`、`ZOHO_REFRESH_TOKEN` Repository SecretsからDraft作成stepだけへ渡します。成功・失敗を問わずZoho APIレスポンス本文、token、secretは通常ログへ出力・artifact化しません。自動化は `createCampaign` 以外のZoho操作を行わず、`sendcampaign`、テストメール、予約送信、本番送信、contact listへの実配信を明示的に禁止します。
+
+通常の予約済みmarkerでDraft作成が停止した場合だけ、管理者は `EMERGENCY - Recover Zoho Draft Only` を手動実行できます。current mainのcampaign JSONと公開HTMLを再検証し、ledgerが `reserved` かつ `created` でない場合だけ、明示確認文字列を要求してDraft作成を1回試行します。実行前にZoho UIでDraftが存在しないことを確認します。このworkflowも送信APIを持たず、通常フローでは使用しません。
+
+### リポジトリ管理者が初回だけ行う設定
+
+1. Settings → General → Pull Requestsで **Allow auto-merge** と **Allow squash merging** を有効にします。
+2. mainのRuleset/Branch protectionでPull Requestを必須にし、required status checkへ **PR Campaign Validation / validate-campaign** を登録します。required checkの未完了を許す管理者bypassは自動化に付与しません。
+3. GitHub Appをこのrepository専用に作成し、Repository permissionsを **Contents: Read and write**、**Pull requests: Read and write** のみにしてinstallします。App IDをActions variable `CAMPAIGN_AUTOMATION_APP_ID`、private keyをRepository Secret `CAMPAIGN_AUTOMATION_APP_PRIVATE_KEY`へ登録します。専用App tokenでauto-mergeするため、main push後のworkflowが`GITHUB_TOKEN`イベント抑止の対象になりません。
+4. Pagesをmainから公開し、`github-pages` deploymentが作成されることを確認します。
+5. Repository Secretsへ `ZOHO_CLIENT_ID`、`ZOHO_CLIENT_SECRET`、`ZOHO_REFRESH_TOKEN` を登録します。EnvironmentやJSONへ値を複製しません。
+6. Issuesを有効にします。初回成功時に `[automation] Zoho Draft ledger` が自動作成されるため、削除・closeしません。
 
 ## 担当範囲
 
@@ -42,23 +66,23 @@
 - 必要画像のGitHub配置
 - 既存の正式テンプレートによる本番HTML生成
 - HTML要件・リンク・原稿・既存機能のテスト
-- コミット、PR、GitHub Pages公開
+- コミットとPR作成（Pages公開・検証・Draft作成はActionsが自動実行）
 
 Codexは承認済みデザインを独自に改善・再設計しません。差異や実装上の制約がある場合は、変更前に確認対象として明示します。
 
 ### GitHub Actions
 
 - ユーザーが指定した公開Google Drive画像の取り込み
-- GitHub PagesへのHTML公開後、確認済みHTMLを参照するZoho Draftの作成
+- PR検証、条件付きauto-merge、Pages deployment待機、公開HTML・画像・CTA検証
+- 公開検証済みHTMLを参照するZoho Draftの自動作成
 
 Actionsはメール送信、テスト送信、予約送信を行いません。
 
 ### ユーザー
 
 - ChatGPT上で原稿とHTMLデザインを確認し、FIXを判断
-- 必要に応じたPRとGitHub Pages表示の確認
-- Zoho Draftの最終確認
-- 実際にメールを送信するかどうかの最終判断
+- システム・テンプレート変更PRだけをレビュー（通常campaign反映PRのPages確認・Draft作成操作は不要）
+- 自動作成されたZoho Draftを確認し、実際にメールを送信するかどうかを最終判断
 
 ## `template_type` の正式ルール
 
@@ -135,5 +159,5 @@ campaign JSONはHTMLではなく、イベント固有の `template_type`、`subj
 
 - OAuthのClient ID、Client Secret、Refresh Token、Access Tokenをコード、設定JSON、campaignデータ、HTML、ログへ保存・出力しません。
 - 画像は公開を許可された素材だけをGitHub Pagesへ配置します。
-- Zoho Draft作成前に、GitHub PagesのHTML、画像、CTA、件名、本文、レスポンシブ表示を確認します。
+- Zoho Draft作成前に、GitHub ActionsがGitHub PagesのHTML、画像、CTA、件名、campaign識別情報を自動検証します。
 - Draft作成は送信承認ではありません。送信操作はユーザーのみが判断します。

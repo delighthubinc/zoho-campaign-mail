@@ -14,6 +14,7 @@ ChatGPT で確定したメール原稿と画像素材から HTML メールを生
 ├── campaigns/
 │   ├── api-test-20260809.html   # 既存の動作確認用ファイル
 │   └── <campaign-slug>/
+│       ├── campaign.json        # slug・件名・Zoho管理名を含むcampaignデータ
 │       ├── mail.html            # 公開する生成済みメール
 │       └── images/              # 公開する画像
 ├── config/
@@ -38,7 +39,7 @@ ChatGPT で確定したメール原稿と画像素材から HTML メールを生
 - `.env` は Git 管理しません。Access Token はファイルへ保存せず、ログにも出しません。
 - listkey、Topic ID、From、Reply-To、GitHub Pages Base URL は非機密の固定設定として JSON に保存できます。
 - 必要な Scope は `ZohoCampaigns.campaign.CREATE`、`ZohoCampaigns.campaign.READ`、`ZohoCampaigns.contact.READ` です。`ZohoCampaigns.campaign.UPDATE` は使用しません。
-- Draft 作成前にはまず `--dry-run` で入力を確認してください。dry-run はOAuth通信もZoho API通信も行いません。
+- ローカル開発でpayloadを確認する場合は `--dry-run` を使用できます。通常のDraft作成は公開検証後にActionsが自動実行します。
 - スクリプトは HTTPS の GitHub Pages URLのみを `content_url` として許可し、slugとファイル名を検証します。
 
 ## セットアップ
@@ -112,44 +113,36 @@ python3 scripts/build_email.py \
   --overwrite
 ```
 
-## 3. GitHub Pagesへ公開する
+## 3. PR以降のVer.2自動処理
 
-生成したHTMLと画像をレビューしてコミット・pushし、以下のURLをブラウザや `curl` で取得できることを確認します。
+Codexが生成したHTMLと画像をテストしてPRを作成した後、通常の単一campaign反映ではGitHub Actionsが次を自動実行します。ユーザーがPages表示を確認してから手動でDraft workflowを起動する操作はありません。
+
+1. PR変更範囲、全テスト、compile、HTML再生成一致、placeholder、CTA・UTM、画像、Secretを検証
+2. required checks成功かつ競合なしの場合だけauto-merge
+3. mainと同一commitのGitHub Pages deployment完了を待機
+4. 公開HTML、campaign識別情報、画像、CTAをHTTPで検証
+5. 検証成功時だけZoho Campaigns Draftを作成して停止
+
+公開URLは次の形式です。
 
 ```text
 https://delighthubinc.github.io/zoho-campaign-mail/campaigns/2026-example/mail.html
 ```
 
-GitHub Pagesの反映前にDraft作成を実行しないでください。
+template、workflow、script、config、docs等を含むPRは自動マージされず、ユーザーレビューが必要です。正式な条件は [メール生成 正式運用ルール](docs/MAIL_GENERATION_RULES.md) を参照してください。
 
-## 4. Draftを作成する
+## 4. Draft作成スクリプトのローカルdry-run
 
-まず通信なしでペイロードを確認します。
+通常運用ではActionsがcampaign JSONから値を読み取ります。開発時に通信なしでペイロードだけを確認する場合は、次のdry-runを使用できます。
 
 ```bash
 python3 scripts/create_zoho_draft.py \
   --config config/zoho.json \
-  --campaign-slug 2026-example \
-  --campaign-name "2026年 セミナー案内" \
-  --subject "セミナー開催のお知らせ" \
-  --mailing-list "過去リスト（新）" \
-  --mailing-list "CRMから連携されたリスト" \
+  --campaign-file campaigns/forum-20260910/campaign.json \
   --dry-run
 ```
 
-dry-runの出力には、Topic、選択したリスト名と `list_details`、From、Reply-To、`content_url` が含まれます。`list_details` はZoho Campaignsが要求する `{"<listkey1>":[],"<listkey2>":[]}` 形式です。
-
-確認後、`--dry-run` を外したときだけ、OAuth Access Tokenを取得して `POST /api/v1.1/createCampaign` を1回呼び出します。
-
-```bash
-python3 scripts/create_zoho_draft.py \
-  --config config/zoho.json \
-  --campaign-slug 2026-example \
-  --campaign-name "2026年 セミナー案内" \
-  --subject "セミナー開催のお知らせ" \
-  --mailing-list "過去リスト（新）" \
-  --mailing-list "CRMから連携されたリスト"
-```
+dry-runの出力には、Topic、設定済み配信リスト、From、Reply-To、`content_url` が含まれますが、OAuth通信もZoho API通信も行いません。通常運用で人間が`--dry-run`を外して実行することはありません。
 
 ### 実装しない操作
 
@@ -158,19 +151,6 @@ python3 scripts/create_zoho_draft.py \
 - UPDATE系API
 - Google Drive API認証・ダウンロード（初期実装では未対応）
 
-## GitHub ActionsからZoho Campaigns Draftを作成する手順
+## 障害時だけのDraft recovery
 
-このworkflowが行うのは、新規Draftを作る `createCampaign` の呼び出しだけです。送信、予約送信、既存キャンペーンの更新は行いません。
-
-1. GitHubリポジトリの **Settings → Secrets and variables → Actions** で、次の3項目をRepository Secretsに登録します（値をリポジトリ内のファイルへ保存しないでください）。
-   - `ZOHO_CLIENT_ID`
-   - `ZOHO_CLIENT_SECRET`
-   - `ZOHO_REFRESH_TOKEN`
-2. HTMLメールと画像をコミット・pushし、対象の `mail.html` がGitHub Pagesへ反映されるまで待ちます。
-3. GitHubの **Actions** 画面から **Create Zoho Draft** workflowを選び、**Run workflow** を開きます。
-4. 次の入力項目を指定します。
-   - `campaign_slug`: `campaigns/<campaign_slug>/mail.html` のディレクトリ名
-   - `campaign_name`: Zoho Campaignsに表示するキャンペーン名
-   - `subject`: メールの件名
-5. **Run workflow** を押します。workflowは回帰テスト、GitHub PagesのHTTP 200確認、秘密情報を含まないDraft内容の確認を順に行ってから、固定の2配信リストを対象にDraftを作成します。Pagesが未反映の場合はDraftを作らずエラー終了します。
-6. 成功後、Zoho Campaignsを開き、作成されたDraftの件名、本文、From、Reply-To、Topic、配信リストを最終確認してください。送信操作はこのリポジトリの対象外です。
+通常フローがledgerを`reserved`にした後で停止した場合に限り、repository管理者はActionsの **EMERGENCY - Recover Zoho Draft Only** を利用できます。先にZoho Campaigns UIで同名Draftが存在しないことを確認し、明示確認文字列を入力します。current mainの公開HTMLとledgerを再検証し、未作成と判断できる場合だけDraft作成を一度試行します。通常運用では使用しません。
