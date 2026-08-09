@@ -1,0 +1,73 @@
+name: Import Common Asset
+
+on:
+  workflow_dispatch:
+    inputs:
+      drive_file_id:
+        description: Public Google Drive file ID
+        required: true
+        type: string
+      filename:
+        description: Common asset filename (.png, .jpg, .jpeg, .gif or .webp)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  import-common-asset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DRIVE_FILE_ID: ${{ inputs.drive_file_id }}
+      FILENAME: ${{ inputs.filename }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate inputs
+        id: destination
+        run: |
+          destination="$(python scripts/import_common_asset.py \
+            --drive-file-id "$DRIVE_FILE_ID" \
+            --filename "$FILENAME" \
+            --print-destination)"
+          echo "path=$destination" >> "$GITHUB_OUTPUT"
+
+      - name: Download public Google Drive image
+        env:
+          DOWNLOAD_PATH: ${{ runner.temp }}/drive-common-asset-download
+          HEADER_PATH: ${{ runner.temp }}/drive-common-asset-headers
+        run: |
+          curl --fail --location --silent --show-error \
+            --dump-header "$HEADER_PATH" \
+            "https://drive.usercontent.google.com/download?id=${DRIVE_FILE_ID}&export=download&confirm=t" \
+            --output "$DOWNLOAD_PATH"
+
+      - name: Validate and install common asset
+        env:
+          DOWNLOAD_PATH: ${{ runner.temp }}/drive-common-asset-download
+          HEADER_PATH: ${{ runner.temp }}/drive-common-asset-headers
+        run: |
+          python scripts/import_common_asset.py \
+            --drive-file-id "$DRIVE_FILE_ID" \
+            --filename "$FILENAME" \
+            --download "$DOWNLOAD_PATH" \
+            --headers "$HEADER_PATH"
+
+      - name: Commit imported common asset
+        env:
+          DEST_PATH: ${{ steps.destination.outputs.path }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "$DEST_PATH"
+          if git diff --cached --quiet; then
+            echo "No common asset change to commit."
+            exit 0
+          fi
+          git commit -m "Import common asset ${FILENAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
