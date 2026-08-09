@@ -87,7 +87,13 @@ jobs:
             core.setOutput('issue', issue?.number || '');
             if (issue) {
               const comments = await github.paginate(github.rest.issues.listComments, {owner:context.repo.owner, repo:context.repo.repo, issue_number:issue.number, per_page:100});
-              core.setOutput('duplicate', comments.some(x => x.body?.includes(`draft-marker:${marker}`)) ? 'true' : 'false');
+              const matching = comments.map(x => x.body || '').filter(x => x.includes(`draft-marker:${marker}`));
+              const created = matching.some(x => x.includes('state:created'));
+              const reserved = matching.some(x => x.includes('state:reserved'));
+              core.setOutput('duplicate', created ? 'true' : 'false');
+              if (reserved && !created) {
+                return core.setFailed('Draft marker is reserved but not created; verify Zoho and use the administrator-only recovery workflow. Refusing an unsafe skip or duplicate API call.');
+              }
             } else core.setOutput('duplicate', 'false');
       - name: Reserve the idempotency marker before the external API call
         if: steps.ledger.outputs.duplicate != 'true'

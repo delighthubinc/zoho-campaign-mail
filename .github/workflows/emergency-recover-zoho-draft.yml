@@ -7,6 +7,10 @@ on:
         description: Recovery対象campaign slug（mainのcampaign.jsonを使用）
         required: true
         type: string
+      failed_commit_sha:
+        description: reservedを作成した失敗Workflowの40文字commit SHA
+        required: true
+        type: string
       confirmation:
         description: 重複リスクを確認し CREATE_DRAFT_RECOVERY と入力
         required: true
@@ -43,9 +47,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - name: Resolve checked-out main SHA
-        id: main
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          fetch-depth: 0
+      - name: Validate failed commit and campaign identity
+        env:
+          FAILED_SHA: ${{ inputs.failed_commit_sha }}
+          SLUG: ${{ inputs.campaign_slug }}
+        run: |
+          [[ "$FAILED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$FAILED_SHA" HEAD
+          old_name="$(git show "$FAILED_SHA:campaigns/$SLUG/campaign.json" | jq -r .zoho_campaign_name)"
+          current_name="$(jq -r .zoho_campaign_name "campaigns/$SLUG/campaign.json")"
+          test -n "$old_name" && test "$old_name" != null && test "$old_name" = "$current_name"
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - name: Validate campaign metadata and published HTML again
@@ -59,12 +71,12 @@ jobs:
         uses: actions/github-script@v7
         env:
           SLUG: ${{ inputs.campaign_slug }}
-          MAIN_SHA: ${{ steps.main.outputs.sha }}
+          FAILED_SHA: ${{ inputs.failed_commit_sha }}
         with:
           script: |
             const fs = require('fs'); const crypto = require('crypto');
             const data = JSON.parse(fs.readFileSync(`campaigns/${process.env.SLUG}/campaign.json`, 'utf8'));
-            const marker = crypto.createHash('sha256').update(`${process.env.MAIN_SHA}\0${data.campaign_slug}\0${data.zoho_campaign_name}`).digest('hex');
+            const marker = crypto.createHash('sha256').update(`${process.env.FAILED_SHA}\0${data.campaign_slug}\0${data.zoho_campaign_name}`).digest('hex');
             const issues = await github.rest.issues.listForRepo({owner:context.repo.owner, repo:context.repo.repo, state:'open'});
             const issue = issues.data.find(x => x.title === '[automation] Zoho Draft ledger');
             if (!issue) return core.setFailed('No Draft ledger exists; recovery is not applicable');
@@ -80,10 +92,10 @@ jobs:
         env:
           MARKER: ${{ steps.ledger.outputs.marker }}
           ISSUE: ${{ steps.ledger.outputs.issue }}
-          MAIN_SHA: ${{ steps.main.outputs.sha }}
+          FAILED_SHA: ${{ inputs.failed_commit_sha }}
         with:
           script: |
-            await github.rest.issues.createComment({owner:context.repo.owner, repo:context.repo.repo, issue_number:Number(process.env.ISSUE), body:`draft-marker:${process.env.MARKER}\ncommit:${process.env.MAIN_SHA}\ncampaign:${{ inputs.campaign_slug }}\nstate:recovery-attempt\nactor:${context.actor}`});
+            await github.rest.issues.createComment({owner:context.repo.owner, repo:context.repo.repo, issue_number:Number(process.env.ISSUE), body:`draft-marker:${process.env.MARKER}\ncommit:${process.env.FAILED_SHA}\ncampaign:${{ inputs.campaign_slug }}\nstate:recovery-attempt\nactor:${context.actor}`});
       - name: Create Zoho Campaigns Draft only (no send APIs)
         env:
           ZOHO_CLIENT_ID: ${{ secrets.ZOHO_CLIENT_ID }}
@@ -95,7 +107,7 @@ jobs:
         env:
           MARKER: ${{ steps.ledger.outputs.marker }}
           ISSUE: ${{ steps.ledger.outputs.issue }}
-          MAIN_SHA: ${{ steps.main.outputs.sha }}
+          FAILED_SHA: ${{ inputs.failed_commit_sha }}
         with:
           script: |
-            await github.rest.issues.createComment({owner:context.repo.owner, repo:context.repo.repo, issue_number:Number(process.env.ISSUE), body:`draft-marker:${process.env.MARKER}\ncommit:${process.env.MAIN_SHA}\ncampaign:${{ inputs.campaign_slug }}\nstate:created-by-recovery\nactor:${context.actor}`});
+            await github.rest.issues.createComment({owner:context.repo.owner, repo:context.repo.repo, issue_number:Number(process.env.ISSUE), body:`draft-marker:${process.env.MARKER}\ncommit:${process.env.FAILED_SHA}\ncampaign:${{ inputs.campaign_slug }}\nstate:created-by-recovery\nactor:${context.actor}`});

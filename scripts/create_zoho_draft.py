@@ -140,7 +140,6 @@ def build_payload(config: dict, args: argparse.Namespace) -> dict[str, str]:
     # It does not accept {"listkey": ["key1", "key2"]} for this endpoint.
     list_details = {configured_lists[name]: [] for name in selected_names}
     return {
-        "resfmt": "JSON",
         "campaignname": args.campaign_name.strip(),
         "subject": args.subject.strip(),
         "from_name": config["from"]["name"],
@@ -199,7 +198,6 @@ def redacted_summary(
     return {
         "operation": "createCampaign (Draft作成のみ)",
         "endpoint": config["campaigns_base_url"].rstrip("/") + CREATE_CAMPAIGN_PATH,
-        "resfmt": payload["resfmt"],
         "campaign_slug": campaign_slug,
         "campaignname": payload["campaignname"],
         "subject": payload["subject"],

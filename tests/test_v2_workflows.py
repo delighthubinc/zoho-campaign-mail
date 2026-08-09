@@ -18,6 +18,8 @@ class V2WorkflowSafetyTests(unittest.TestCase):
         self.assertIn("permission !== 'admin'", workflow)
         self.assertIn("CREATE_DRAFT_RECOVERY", workflow)
         self.assertIn("state:recovery-attempt", workflow)
+        self.assertIn("failed_commit_sha:", workflow)
+        self.assertIn("git merge-base --is-ancestor", workflow)
         self.assertIn("create_zoho_draft.py --campaign-file", workflow)
         lowered = workflow.lower()
         for forbidden in ("sendcampaign", "schedulecampaign", "test email"):
@@ -27,6 +29,7 @@ class V2WorkflowSafetyTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/publish-and-create-draft.yml").read_text(encoding="utf-8")
         self.assertIn("state:reserved", workflow)
         self.assertIn("state:created", workflow)
+        self.assertIn("reserved but not created", workflow)
 
 
 if __name__ == "__main__":
