@@ -57,8 +57,8 @@ def detected_image_type(data: bytes) -> str | None:
     return None
 
 
-def install_image(download: Path, headers: Path, campaign_slug: str, filename: str) -> Path:
-    destination = destination_for(campaign_slug, filename)
+def validate_download(download: Path, headers: Path, filename: str) -> None:
+    """Validate a downloaded response without changing the working tree."""
     content_type = response_content_type(headers.read_bytes())
     if not content_type or not (
         content_type.startswith("image/") or content_type in GENERIC_BINARY_TYPES
@@ -75,6 +75,11 @@ def install_image(download: Path, headers: Path, campaign_slug: str, filename: s
             f"downloaded content is not the requested image format "
             f"(expected {expected_type}, detected {actual_type or 'unknown'})"
         )
+
+
+def install_image(download: Path, headers: Path, campaign_slug: str, filename: str) -> Path:
+    destination = destination_for(campaign_slug, filename)
+    validate_download(download, headers, filename)
 
     repository = Path.cwd().resolve()
     current = repository

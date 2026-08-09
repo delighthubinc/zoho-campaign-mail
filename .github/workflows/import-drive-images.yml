@@ -1,0 +1,74 @@
+name: Import Drive Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      campaign_slug:
+        description: Destination campaign slug
+        required: true
+        type: string
+      images_json:
+        description: JSON array of Drive file IDs and destination filenames (1-20 images)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  import-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CAMPAIGN_SLUG: ${{ inputs.campaign_slug }}
+      IMAGES_JSON: ${{ inputs.images_json }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate batch input
+        env:
+          MANIFEST_PATH: ${{ runner.temp }}/drive-images-manifest.json
+        run: |
+          python scripts/import_drive_images.py \
+            --campaign-slug "$CAMPAIGN_SLUG" \
+            --images-json "$IMAGES_JSON" \
+            --manifest "$MANIFEST_PATH"
+
+      - name: Download all public Google Drive images
+        env:
+          MANIFEST_PATH: ${{ runner.temp }}/drive-images-manifest.json
+          DOWNLOAD_DIR: ${{ runner.temp }}/drive-images
+        run: |
+          mkdir -p "$DOWNLOAD_DIR"
+          count="$(jq length "$MANIFEST_PATH")"
+          for ((index=0; index<count; index++)); do
+            drive_file_id="$(jq -r ".[${index}].drive_file_id" "$MANIFEST_PATH")"
+            curl --fail --location --silent --show-error \
+              --dump-header "$DOWNLOAD_DIR/${index}.headers" \
+              "https://drive.usercontent.google.com/download?id=${drive_file_id}&export=download&confirm=t" \
+              --output "$DOWNLOAD_DIR/${index}.download"
+          done
+
+      - name: Validate and install complete batch
+        env:
+          DOWNLOAD_DIR: ${{ runner.temp }}/drive-images
+        run: |
+          python scripts/import_drive_images.py \
+            --campaign-slug "$CAMPAIGN_SLUG" \
+            --images-json "$IMAGES_JSON" \
+            --download-dir "$DOWNLOAD_DIR"
+
+      - name: Commit imported images
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "campaigns/${CAMPAIGN_SLUG}/images/"
+          if git diff --cached --quiet; then
+            echo "No image changes to commit."
+            exit 0
+          fi
+          git commit -m "Import Drive images for ${CAMPAIGN_SLUG}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
