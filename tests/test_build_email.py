@@ -36,7 +36,7 @@ class LargeSeminarTests(unittest.TestCase):
         for value in (
             self.content["subject"], *self.content["intro"],
             self.content["speakers"][0]["name"], self.content["speakers"][1]["name"],
-            build.build_cta_url(self.content["cta"]), self.content["cta"]["label"],
+            html_escape(build.build_cta_url(self.content["cta"])), self.content["cta"]["label"],
         ):
             self.assertIn(value, self.rendered)
         for image in (self.content["banner"], *(s["image"] for s in self.content["speakers"])):
@@ -65,6 +65,11 @@ class LargeSeminarTests(unittest.TestCase):
         self.assertIn("企画部 天野 晴香", self.rendered)
 
     def test_banner_links_to_the_exact_same_url_as_ctas(self) -> None:
+        self.assertEqual(
+            build.build_cta_url(self.content["cta"]),
+            "https://realestate-future-forum.studio.site/"
+            "?utm_source=delighthub&utm_medium=email&utm_campaign=20260910",
+        )
         expected_href = html_escape(build.build_cta_url(self.content["cta"]))
         raw_banner_url = self.content["banner"]["url"]
         banner_url = re.escape(raw_banner_url)
