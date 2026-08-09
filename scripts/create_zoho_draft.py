@@ -140,6 +140,7 @@ def build_payload(config: dict, args: argparse.Namespace) -> dict[str, str]:
     # It does not accept {"listkey": ["key1", "key2"]} for this endpoint.
     list_details = {configured_lists[name]: [] for name in selected_names}
     return {
+        "resfmt": "JSON",
         "campaignname": args.campaign_name.strip(),
         "subject": args.subject.strip(),
         "from_name": config["from"]["name"],
@@ -198,6 +199,7 @@ def redacted_summary(
     return {
         "operation": "createCampaign (Draft作成のみ)",
         "endpoint": config["campaigns_base_url"].rstrip("/") + CREATE_CAMPAIGN_PATH,
+        "resfmt": payload["resfmt"],
         "campaign_slug": campaign_slug,
         "campaignname": payload["campaignname"],
         "subject": payload["subject"],
@@ -209,6 +211,25 @@ def redacted_summary(
         "list_details": json.loads(payload["list_details"]),
         "content_url": payload["content_url"],
     }
+
+
+def validate_create_response(response: dict, sensitive_values: tuple[str, ...] = ()) -> None:
+    """Reject Zoho business errors, including those returned with HTTP 200."""
+    code = response.get("code")
+    if code in (200, "200"):
+        return
+
+    def safe_value(key: str) -> str:
+        value = str(response.get(key, ""))
+        for secret in sensitive_values:
+            if secret:
+                value = value.replace(secret, "[REDACTED]")
+        return value
+
+    raise DraftError(
+        "Zoho Campaigns APIがエラーを返しました: "
+        f"code={safe_value('code')}, message={safe_value('message')}, uri={safe_value('uri')}"
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -248,6 +269,7 @@ def main() -> int:
         token = access_token(config, secrets)
         endpoint = config["campaigns_base_url"].rstrip("/") + CREATE_CAMPAIGN_PATH
         result = request_json(endpoint, payload, {"Authorization": f"Zoho-oauthtoken {token}"})
+        validate_create_response(result, tuple(secrets.values()) + (token,))
         print("Zoho Campaigns createCampaign のレスポンス:")
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
