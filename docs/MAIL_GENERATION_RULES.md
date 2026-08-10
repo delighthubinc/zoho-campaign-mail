@@ -42,6 +42,17 @@ ChatGPTは新規セミナー制作のたびに、原則として次の流れで�
 - `campaign.json`: `campaign_slug`、`subject`、`zoho_campaign_name`、CTA/UTM、使用画像などを保持する管理・Validation・automation用ファイル。HTML生成元ではない。`content_source` は `fixed_html` のみを正式値とし、validatorは未知値をfail-closedで拒否する。
 - `scripts/build_email.py`: 削除せず、既存テンプレートからの初期HTML作成、デザイン参照、開発・テストに利用できる。ただし通常campaignのchecked-in HTMLとのbyte-for-byte再生成一致は要件ではない。
 
+## セミナーblock標準デザイン
+
+- `templates/base/email.html` はメール全体の固定シェルです。
+- `standard` / `large` presetは、初稿でどのblockをどの順序で使うかを決める初期構成の参考です。
+- `templates/seminar/blocks/*.html` は各seminar blockの外側標準レイアウト、`templates/seminar/fragments/*.html` は見出し、段落、画像、speaker cell、row、card、logo cell等のblock内部標準部品の正本です。padding、font-size、line-height、color、background、border、table構造等の見た目はこれらのHTMLで管理します。
+- ChatGPTは新規メール本文に既存block相当の表現を使う場合、対応するblockとfragmentを標準部品として原則そのまま使用します。block名や概念だけを参考に、同じ用途の独自デザインをゼロから作りません。例えば開催概要は `event_info.html`、`section_heading.html`、`event_info_row.html`、基調講演は `keynote_speakers.html`、`section_heading.html`、`speaker_cell.html` 等を合わせて参照します。CTAは内部デザインを含む `cta.html` を参照します。
+- `scripts/build_email.py` も初期seminar HTML生成時に同じblock / fragment templateを読み込みます。Pythonはデータ検証、HTML escape、配列のiteration、条件分岐、placeholderへの値注入を担当し、標準デザインのHTML/CSSを二重管理しません。
+- ユーザーから個別の文面・レイアウト・CSS・レスポンシブ変更指示がある場合、ChatGPTはcampaignの完成HTML上でカスタマイズできます。ユーザーがFIXした `campaigns/<slug>/mail.html` が、そのcampaignの最終表示の正本です。
+- campaign固有のFIX内容をblock templateへ逆反映する必要はありません。「今後もこれを標準にしたい」とユーザーが明示した場合だけ、通常campaign制作から分離したsystem/template変更として扱います。
+- block templateは初稿制作の標準部品であり、`campaign.json`をHTML生成元へ戻すものではありません。PR Validationは引き続きFIX済みHTMLを直接検証し、generatorとの再生成一致を要求しません。
+
 ## 正式フロー
 ### Ver.2（通常campaign本番反映）
 
