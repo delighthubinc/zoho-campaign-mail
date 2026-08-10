@@ -152,6 +152,107 @@ class LargeSeminarTests(unittest.TestCase):
         self.assertEqual(rendered.count(expected), 3)
 
 
+class SeminarBlockTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.content = {
+            "campaign_slug": "generic-seminar",
+            "zoho_campaign_name": "汎用セミナー管理名",
+            "template_type": "seminar",
+            "preset": "standard",
+            "subject": "汎用セミナー",
+            "preheader": "セミナーのご案内",
+            "cta": {
+                "label": "申し込む",
+                "base_url": "https://events.example.jp/apply",
+                "utm": {"source": "zoho", "medium": "email", "campaign": "generic_seminar"},
+            },
+            "blocks": [
+                {"type": "hero", "image": {"url": "https://example.github.io/repo/campaigns/generic-seminar/images/hero.png", "alt": "セミナーバナー"}},
+                {"type": "text", "heading": "ご案内", "paragraphs": ["最初の本文"]},
+                {"type": "event_date", "date": "2026年10月1日", "note": "オンライン"},
+                {"type": "benefits", "items": ["実務に役立つ"]},
+                {"type": "speaker", "name": "講師 太郎", "company": "講師株式会社", "title": "最新講演", "image": {"url": "https://example.github.io/repo/speaker.jpg", "alt": "講師太郎"}},
+                {"type": "cta", "label": "無料で申し込む"},
+                {"type": "event_info", "items": {"日時": "2026年10月1日", "形式": "オンライン"}},
+            ],
+        }
+
+    def render(self, content=None):
+        return build.render_seminar(
+            content or self.content,
+            build.BASE_TEMPLATE.read_text(encoding="utf-8"),
+            build.TEMPLATE_FILES["seminar"].read_text(encoding="utf-8"),
+        )
+
+    def keynote_block(self):
+        return {"type": "keynote_speakers", "heading": "注目の基調講演", "speakers": [{
+            "name": "基調 花子", "company": "未来株式会社", "title": "未来の展望",
+            "image": {"url": "https://example.github.io/repo/keynote.jpg", "alt": "基調花子"},
+        }]}
+
+    def test_standard_and_large_presets_generate(self):
+        for preset in ("standard", "large"):
+            with self.subTest(preset=preset):
+                content = copy.deepcopy(self.content); content["preset"] = preset
+                self.assertIn("汎用セミナー", self.render(content))
+        without_preset = copy.deepcopy(self.content); without_preset.pop("preset")
+        self.assertIn("汎用セミナー", self.render(without_preset))
+
+    def test_blocks_render_in_array_order(self):
+        rendered = self.render()
+        markers = ["セミナーバナー", "最初の本文", "2026年10月1日", "実務に役立つ", "講師 太郎", "無料で申し込む", "開催概要"]
+        positions = [rendered.index(marker) for marker in markers]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_removing_block_removes_its_output(self):
+        content = copy.deepcopy(self.content)
+        content["blocks"] = [b for b in content["blocks"] if b["type"] != "benefits"]
+        self.assertNotIn("実務に役立つ", self.render(content))
+
+    def test_large_does_not_force_keynotes(self):
+        content = copy.deepcopy(self.content); content["preset"] = "large"
+        self.assertNotIn("KEYNOTE SPEAKERS", self.render(content))
+        self.assertNotIn("基調講演", self.render(content))
+
+    def test_standard_can_add_keynotes(self):
+        content = copy.deepcopy(self.content); content["blocks"].insert(2, self.keynote_block())
+        self.assertIn("基調 花子", self.render(content))
+
+    def test_session_cards_and_optional_keynote_badge(self):
+        content = copy.deepcopy(self.content)
+        content["blocks"] = [{"type": "session_cards", "sessions": [
+            {"time": "10:00", "company": "A社", "title": "基調セッション", "keynote": True},
+            {"time": "11:00", "company": "B社", "title": "通常セッション"},
+        ]}]
+        rendered = self.render(content)
+        self.assertIn('<table role="presentation"', rendered)
+        self.assertLess(rendered.index("10:00"), rendered.index("A社"))
+        self.assertLess(rendered.index("A社"), rendered.index("基調セッション"))
+        self.assertEqual(rendered.count(">基調講演</span>"), 1)
+
+    def test_text_is_escaped_and_arbitrary_html_field_is_rejected(self):
+        content = copy.deepcopy(self.content)
+        content["blocks"] = [{"type": "text", "paragraphs": ["<script>alert('x')</script> & 本文"]}]
+        rendered = self.render(content)
+        self.assertIn("&lt;script&gt;", rendered)
+        self.assertNotIn("<script>", rendered)
+        content["blocks"][0]["html"] = "<b>自由HTML</b>"
+        with self.assertRaisesRegex(ValueError, "未対応のfield"):
+            self.render(content)
+
+    def test_invalid_block_type_and_missing_required_field_fail(self):
+        for block, message in (({"type": "free_html"}, "未対応"), ({"type": "session_cards", "sessions": [{"time": "10:00", "company": "A社"}]}, "title")):
+            with self.subTest(block=block):
+                content = copy.deepcopy(self.content); content["blocks"] = [block]
+                with self.assertRaisesRegex(ValueError, message):
+                    self.render(content)
+
+    def test_utm_builder_is_shared_by_hero_and_cta_blocks(self):
+        rendered = self.render()
+        expected = html_escape(build.build_cta_url(self.content["cta"]))
+        self.assertEqual(rendered.count(f'href="{expected}"'), 2)
+
+
 class LegacyTemplateTests(unittest.TestCase):
     def test_content_without_template_type_uses_legacy_renderer(self) -> None:
         content = {
