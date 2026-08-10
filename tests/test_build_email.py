@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from html import escape as html_escape
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("build_email", ROOT / "scripts" / "build_email.py")
@@ -190,6 +191,23 @@ class SeminarBlockTests(unittest.TestCase):
             "image": {"url": "https://example.github.io/repo/keynote.jpg", "alt": "基調花子"},
         }]}
 
+    def all_blocks(self):
+        return [
+            {"type": "hero", "image": {"url": "https://example.github.io/repo/hero.png", "alt": "hero"}},
+            {"type": "text", "heading": "本文", "paragraphs": ["案内"]},
+            {"type": "event_date", "date": "2026年10月1日", "note": "オンライン"},
+            {"type": "cta", "label": "申し込む"},
+            {"type": "speaker", "name": "講師", "company": "A社", "title": "講演", "subtitle": "講師紹介", "image": {"url": "https://example.github.io/repo/a.png", "alt": "講師"}},
+            self.keynote_block(),
+            {"type": "benefits", "items": ["学び"]},
+            {"type": "session_cards", "sessions": [{"time": "10:00", "company": "A社", "title": "講演", "keynote": True}]},
+            {"type": "image_text", "heading": "紹介", "paragraphs": ["説明"], "image": {"url": "https://example.github.io/repo/b.png", "alt": "紹介"}},
+            {"type": "company_logos", "logos": [{"url": "https://example.github.io/repo/logo.png", "alt": "A社"}]},
+            {"type": "notice", "text": "注意事項"},
+            {"type": "divider"},
+            {"type": "event_info", "items": {"形式": "オンライン"}},
+        ]
+
     def test_standard_and_large_presets_generate(self):
         for preset in ("standard", "large"):
             with self.subTest(preset=preset):
@@ -251,6 +269,63 @@ class SeminarBlockTests(unittest.TestCase):
         rendered = self.render()
         expected = html_escape(build.build_cta_url(self.content["cta"]))
         self.assertEqual(rendered.count(f'href="{expected}"'), 2)
+
+    def test_block_template_files_match_supported_block_types(self):
+        template_types = {path.stem for path in build.SEMINAR_BLOCK_TEMPLATE_DIR.glob("*.html")}
+        self.assertEqual(template_types, build.SEMINAR_BLOCK_TYPES)
+
+    def test_required_fragment_templates_exist(self):
+        expected = {
+            "benefit_row", "company_logo_cell", "event_info_row",
+            "image_text_image_cell", "image_text_paragraph", "image_text_text_cell",
+            "responsive_image", "section_heading", "session_card",
+            "session_keynote_badge", "speaker_cell", "speaker_subtitle", "text_paragraph",
+        }
+        actual = {path.stem for path in build.SEMINAR_FRAGMENT_TEMPLATE_DIR.glob("*.html")}
+        self.assertEqual(actual, expected)
+
+    def test_every_block_template_renders_without_unresolved_placeholders(self):
+        content = copy.deepcopy(self.content)
+        content["blocks"] = self.all_blocks()
+        rendered = self.render(content)
+        self.assertIsNone(build.PLACEHOLDER_RE.search(rendered))
+        for block_type in build.SEMINAR_BLOCK_TYPES:
+            self.assertTrue(build.seminar_block_template(block_type))
+
+    def test_all_block_templates_are_on_the_render_path(self):
+        content = copy.deepcopy(self.content)
+        content["blocks"] = self.all_blocks()
+        original = build.seminar_block_template
+
+        def marked(block_type):
+            return f"<!-- BLOCK_SENTINEL:{block_type} -->" + original(block_type)
+
+        with patch.object(build, "seminar_block_template", side_effect=marked):
+            rendered = self.render(content)
+        for block_type in build.SEMINAR_BLOCK_TYPES:
+            self.assertIn(f"<!-- BLOCK_SENTINEL:{block_type} -->", rendered)
+
+    def test_all_fragment_templates_are_on_the_render_path(self):
+        content = copy.deepcopy(self.content)
+        content["blocks"] = self.all_blocks()
+        fragment_names = {path.stem for path in build.SEMINAR_FRAGMENT_TEMPLATE_DIR.glob("*.html")}
+        original = build.seminar_fragment_template
+
+        def marked(fragment_name):
+            return f"<!-- FRAGMENT_SENTINEL:{fragment_name} -->" + original(fragment_name)
+
+        with patch.object(build, "seminar_fragment_template", side_effect=marked):
+            rendered = self.render(content)
+        for fragment_name in fragment_names:
+            self.assertIn(f"<!-- FRAGMENT_SENTINEL:{fragment_name} -->", rendered)
+
+    def test_standard_design_tokens_remain_in_templates(self):
+        templates = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in build.SEMINAR_BLOCK_TEMPLATE_DIR.glob("*.html")
+        )
+        for token in ("#102a4c", "#c5a253", "#f4f6f9", "#d8dee8", "mobile-pad"):
+            self.assertIn(token, templates)
 
 
 class LegacyTemplateTests(unittest.TestCase):

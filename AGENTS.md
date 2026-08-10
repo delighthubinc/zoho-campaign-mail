@@ -13,6 +13,9 @@
 - 本番HTMLに仮のCTA URLを残さない。CTA URLが不明な場合は推測せず、ユーザーへ確認する。
 - CTAとUTMの正式ルールは `docs/MAIL_GENERATION_RULES.md` に従う。ChatGPTはcampaignごとにUTM候補を提示し、HTMLプレビュー時点から本番と同じCTA URLを使用する。
 - 全セミナーメールは `templates/base/email.html` を共通基盤とし、`assets/common/` のDelight Hubロゴ、Zoho宛名差し込みタグ、配信対象注意書き、天野晴香のプロフィール画像を含む共通署名を必ず表示する。
+- 新規セミナーメールの本文で既存blockに相当する表現を使う場合、ChatGPTは `templates/seminar/blocks/<block名>.html` と、そのblockから挿入される `templates/seminar/fragments/*.html` のHTML/CSSを標準部品として原則そのまま使用し、block名や概念だけを参考に独自デザインをゼロから作らない。開催概要は `event_info.html`、`section_heading.html`、`event_info_row.html`、CTAは `cta.html`、基調講演は `keynote_speakers.html` と登壇者用fragmentを参照する。
+- `templates/base/email.html` は固定シェル、`standard` / `large` presetは初期block構成、`templates/seminar/blocks/*.html` は各blockの外側標準レイアウト、`templates/seminar/fragments/*.html` はblock内部の標準部品、FIX済み `campaigns/<slug>/mail.html` はcampaign最終表示の正本として役割を分ける。
+- ユーザーの個別指示によるblockの変更はcampaignの完成HTML上で行い、FIX後の変更をblock templateへ逆反映しない。ユーザーが今後の標準化を明示した場合だけ、通常campaign制作とは分けたsystem/template変更として扱う。
 - セミナーバナーは `build_cta_url()` で生成したCTAと同じ本番URLへのリンクにし、直下にイベントページへ遷移する旨の注意書きを表示する。
 - ロゴとプロフィール画像など、全campaignで共通利用する固定素材だけを `assets/common/` で再利用する。会社・担当者・宛名・注意書き等の公開共通情報は `config/email_defaults.json` で管理する。
 - **イベント固有・配信固有の画像（バナー、登壇者、セッション画像等）は、過去campaignに同じ画像が存在していても再利用判定を行わず、各campaignごとにGoogle Driveの元画像から `campaigns/<slug>/images/` へ毎回取り込む。** DriveとGitHubの過去ファイル名を突合して同一画像かどうかを判定する運用は行わない。
