@@ -58,5 +58,20 @@
       "medium": "email",
       "campaign": "20260910"
     }
-  }
+  },
+  "content_source": "fixed_html",
+  "images": [
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/forum-20260910/images/banner.png",
+      "alt": "不動産未来フォーラム2026"
+    },
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/forum-20260910/images/makino.jpg",
+      "alt": "牧野知弘氏"
+    },
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/forum-20260910/images/oki.jpg",
+      "alt": "沖有人氏"
+    }
+  ]
 }

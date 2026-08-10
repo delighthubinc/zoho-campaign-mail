@@ -82,6 +82,9 @@ class V2WorkflowSafetyTests(unittest.TestCase):
         self.assertIn("actions/create-github-app-token@v2", workflow)
         self.assertIn("GH_TOKEN: ${{ steps.app-token.outputs.token }}", workflow)
         self.assertNotIn("GH_TOKEN: ${{ github.token }}", workflow)
+        self.assertNotIn("Regenerate checked-in HTML", workflow)
+        self.assertNotIn("build_email.py --campaign-slug", workflow)
+        self.assertIn("Validate fixed campaign HTML", workflow)
 
     def test_recovery_is_admin_gated_and_draft_only(self):
         workflow = (ROOT / ".github/workflows/emergency-recover-zoho-draft.yml").read_text(encoding="utf-8")

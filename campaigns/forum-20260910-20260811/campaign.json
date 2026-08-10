@@ -18,7 +18,7 @@
     {
       "type": "hero",
       "image": {
-        "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/forum-20260910/images/banner.png",
+        "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/forum-20260910-20260811/images/banner.png",
         "alt": "不動産未来フォーラム2026"
       }
     },
@@ -50,7 +50,7 @@
           "title": "金利上昇時代の不動産事業戦略2026",
           "subtitle": "〜売買仲介・買取再販はどこへ向かうのか？2030年を見据えた経営判断〜",
           "image": {
-            "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/forum-20260910/images/makino.jpg",
+            "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/forum-20260910-20260811/images/makino.jpg",
             "alt": "牧野知弘氏"
           }
         },
@@ -60,7 +60,7 @@
           "title": "2026年、不動産価格はこうなる",
           "subtitle": "〜価格下落リスク・金利上昇リスクにおびえながら需要喚起する方法〜",
           "image": {
-            "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/forum-20260910/images/oki.jpg",
+            "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/forum-20260910-20260811/images/oki.jpg",
             "alt": "沖有人氏"
           }
         }
@@ -201,6 +201,21 @@
     {
       "type": "cta",
       "label": "無料で参加申し込み"
+    }
+  ],
+  "content_source": "fixed_html",
+  "images": [
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/forum-20260910-20260811/images/banner.png",
+      "alt": "不動産未来フォーラム2026"
+    },
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/forum-20260910-20260811/images/makino.jpg",
+      "alt": "牧野知弘氏"
+    },
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/forum-20260910-20260811/images/oki.jpg",
+      "alt": "沖有人氏"
     }
   ]
 }

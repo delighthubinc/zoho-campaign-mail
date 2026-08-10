@@ -40,14 +40,7 @@ jobs:
         run: find scripts tests -type f -name '*.py' -print0 | xargs -0 python -m py_compile
       - name: Check whitespace errors
         run: git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
-      - name: Regenerate checked-in HTML
-        if: steps.scope.outputs.eligible == 'true'
-        env:
-          SLUG: ${{ steps.scope.outputs.slug }}
-        run: |
-          python scripts/build_email.py --campaign-slug "$SLUG" --content "campaigns/$SLUG/campaign.json" --overwrite
-          git diff --exit-code -- "campaigns/$SLUG/mail.html"
-      - name: Validate generated campaign
+      - name: Validate fixed campaign HTML
         if: steps.scope.outputs.eligible == 'true'
         run: python scripts/validate_campaign.py --campaign-slug "${{ steps.scope.outputs.slug }}"
       - name: Create automation GitHub App token
