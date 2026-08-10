@@ -104,10 +104,53 @@ class DraftPayloadTests(unittest.TestCase):
                         {"code": code, "message": "resfmt pattern doesnot match", "uri": draft.CREATE_CAMPAIGN_PATH}
                     )
                 message = str(caught.exception)
-                self.assertNotIn(str(code), message)
+                self.assertIn(f"provider_code={code}", message)
                 self.assertNotIn("resfmt pattern doesnot match", message)
                 self.assertNotIn(draft.CREATE_CAMPAIGN_PATH, message)
                 self.assertIn("レスポンス本文は出力しません", message)
+
+    def test_only_bounded_safe_provider_codes_are_diagnostic(self) -> None:
+        safe = (0, 1001, "1001", "INVALID_TOPIC", "E-42", "code_7")
+        for code in safe:
+            with self.subTest(code=code):
+                self.assertEqual(draft.safe_provider_code(code), str(code))
+
+        unsafe = (
+            True, -1, 10**18, "", "x" * 33, "bad code", "bad/code",
+            {"echo": "secret"}, [1001], None,
+        )
+        for code in unsafe:
+            with self.subTest(code=code):
+                self.assertEqual(draft.safe_provider_code(code), "unavailable")
+
+    def test_business_error_diagnostic_excludes_all_other_provider_fields(self) -> None:
+        response = draft.JsonResponse(
+            {
+                "code": {"unexpected": "provider-code-sensitive"},
+                "message": "provider-message-sensitive",
+                "uri": "provider-uri-sensitive",
+                "request": "request-payload-sensitive",
+            },
+            200,
+        )
+        with self.assertRaises(draft.DraftError) as caught:
+            draft.validate_create_response(response)
+        message = str(caught.exception)
+        self.assertIn("transport_http_status=200", message)
+        self.assertIn("provider_code=unavailable", message)
+        self.assertIn("provider_outcome=non_success", message)
+        for forbidden in (
+            "provider-code-sensitive", "provider-message-sensitive",
+            "provider-uri-sensitive", "request-payload-sensitive",
+        ):
+            self.assertNotIn(forbidden, message)
+
+    def test_provider_code_matching_oauth_value_is_not_logged(self) -> None:
+        oauth_value = "oauth-token-sensitive"
+        with self.assertRaises(draft.DraftError) as caught:
+            draft.validate_create_response({"code": oauth_value}, (oauth_value,))
+        self.assertIn("provider_code=unavailable", str(caught.exception))
+        self.assertNotIn(oauth_value, str(caught.exception))
 
     def test_api_error_exit_is_one_and_all_oauth_values_are_redacted(self) -> None:
         secrets = {
@@ -137,8 +180,25 @@ class DraftPayloadTests(unittest.TestCase):
         combined = stdout.getvalue() + stderr.getvalue()
         for secret in (*secrets.values(), token):
             self.assertNotIn(secret, combined)
-        self.assertNotIn("code=1001", combined)
+        self.assertIn("provider_code=1001", combined)
         self.assertNotIn("access-token-sensitive", combined)
+        for payload_value in (
+            self.args.campaign_name, self.args.subject,
+            self.config["from"]["email"], self.config["topic"]["id"],
+        ):
+            self.assertNotIn(payload_value, combined)
+
+    def test_oauth_error_body_is_not_logged(self) -> None:
+        oauth_value = "oauth-provider-body-sensitive"
+        with patch.object(
+            draft, "request_json", return_value={"error": oauth_value}
+        ):
+            with self.assertRaises(draft.DraftError) as caught:
+                draft.access_token(self.config, {
+                    "ZOHO_CLIENT_ID": "id", "ZOHO_CLIENT_SECRET": "secret",
+                    "ZOHO_REFRESH_TOKEN": "refresh",
+                })
+        self.assertNotIn(oauth_value, str(caught.exception))
 
     def test_environment_secrets_take_priority_over_dotenv(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
