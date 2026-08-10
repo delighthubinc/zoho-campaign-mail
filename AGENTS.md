@@ -12,7 +12,7 @@
 - 全セミナーメールは `templates/base/email.html` を共通基盤とし、`assets/common/` のDelight Hubロゴ、Zoho宛名差し込みタグ、配信対象注意書き、天野晴香のプロフィール画像を含む共通署名を必ず表示する。
 - セミナーバナーは `build_cta_url()` で生成したCTAと同じ本番URLへのリンクにし、直下にイベントページへ遷移する旨の注意書きを表示する。
 - ロゴとプロフィール画像をcampaign単位で複製せず、会社・担当者・宛名・注意書き等の公開共通情報をcampaign JSONへコピーしない。共通値は `config/email_defaults.json` で管理する。
-- 使用画像はCodex実装前にGitHubへ取り込み、ChatGPTのHTMLプレビューからGitHub Pages上の正式画像URLを使用する。campaign固有画像は `campaigns/<slug>/images/`、共通画像は `assets/common/` に置き、公開Google Drive画像には既存の `Import Drive Image` / `Import Drive Images` / `Import Common Asset` workflowを使用する。
+- 使用画像はCodex実装前にGitHubへ取り込み、ChatGPTのHTMLプレビューからGitHub Pages上の正式画像URLを使用する。campaign固有画像は `campaigns/<slug>/images/`、共通画像は `assets/common/` に置く。新規・差し替えのcampaign画像は、原則としてChatGPTが `[automation:image-import]` Issueを作成し、Actionsから既存の一括取込処理を実行する。完了後はIssue結果とrepository fileを確認し、存在を確認できた正式URLだけを使用する。自動経路に技術的障害がある場合のみ、管理者向けfallbackとして既存の `Import Drive Images` 手動workflowを案内する。
 - 通常campaign実装でCodexが変更する成果物は原則 `campaigns/<slug>/campaign.json` と `campaigns/<slug>/mail.html` に限る。CodexはPNG、JPG/JPEG、GIF、WebPその他のbinary fileを新規追加・変更・コピーせず、`campaign.json` からGitHub Pages上の取り込み済み画像URLを参照する。
 - 必要画像がGitHub上にない、正式画像URLが不明、またはDrive素材しかなく未取り込みの場合、Codexは画像やURLを推測せず、binary fileをPRへ含めない。「画像を先にGitHubへ取り込む必要がある」と報告してfail-closedで停止する。
 

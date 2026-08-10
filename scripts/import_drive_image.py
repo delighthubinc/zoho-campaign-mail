@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 SLUG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+FILENAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 ALLOWED_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 GENERIC_BINARY_TYPES = {"application/octet-stream", "binary/octet-stream"}
 CONTENT_TYPES_BY_SUFFIX = {
@@ -32,9 +33,13 @@ def destination_for(campaign_slug: str, filename: str) -> Path:
         or "/" in filename
         or "\\" in filename
         or ".." in filename
+        or not FILENAME_RE.fullmatch(filename)
         or Path(filename).name != filename
     ):
-        raise ValueError("filename must be a single file name and must not contain '/', '\\' or '..'")
+        raise ValueError(
+            "filename must use only letters, numbers, '.', '_' or '-', be a single file name, "
+            "and must not contain '/', '\\' or '..'"
+        )
     if Path(filename).suffix.lower() not in ALLOWED_SUFFIXES:
         raise ValueError("filename extension must be .png, .jpg, .jpeg, .gif or .webp")
     return Path("campaigns") / campaign_slug / "images" / filename
@@ -84,6 +89,8 @@ def validate_download(download: Path, headers: Path, filename: str) -> None:
 
 def install_image(download: Path, headers: Path, campaign_slug: str, filename: str) -> Path:
     destination = destination_for(campaign_slug, filename)
+    if destination.exists() or destination.is_symlink():
+        raise ValueError(f"destination already exists: {destination}")
     validate_download(download, headers, filename)
 
     repository = Path.cwd().resolve()

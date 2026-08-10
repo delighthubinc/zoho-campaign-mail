@@ -1,0 +1,156 @@
+name: ChatGPT Issue Image Import
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: chat-image-import-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  import-images:
+    if: github.event.issue.title == '[automation:image-import]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require the Issue author to have repository admin permission
+        id: authorize
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const username = context.payload.issue.user.login;
+            const access = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner, repo: context.repo.repo, username
+            });
+            if (access.data.permission !== 'admin') {
+              core.setFailed('Issue author is not a repository owner or administrator.');
+            }
+
+      - name: Checkout the default branch
+        if: steps.authorize.outcome == 'success'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Save and validate the strict JSON Issue body
+        if: steps.authorize.outcome == 'success'
+        id: request
+        uses: actions/github-script@v7
+        env:
+          ISSUE_BODY_PATH: ${{ runner.temp }}/image-import-request.json
+          MANIFEST_PATH: ${{ runner.temp }}/drive-images-manifest.json
+        with:
+          script: |
+            const fs = require('fs');
+            fs.writeFileSync(process.env.ISSUE_BODY_PATH, context.payload.issue.body || '', {mode: 0o600});
+
+      - name: Validate request with the existing batch importer
+        if: steps.authorize.outcome == 'success'
+        id: validate
+        env:
+          ISSUE_BODY_PATH: ${{ runner.temp }}/image-import-request.json
+          MANIFEST_PATH: ${{ runner.temp }}/drive-images-manifest.json
+        run: |
+          python scripts/import_drive_images.py \
+            --issue-body "$ISSUE_BODY_PATH" \
+            --manifest "$MANIFEST_PATH"
+          campaign_slug="$(python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["campaign_slug"])' "$ISSUE_BODY_PATH")"
+          echo "campaign_slug=$campaign_slug" >> "$GITHUB_OUTPUT"
+
+      - name: Download all public Google Drive images
+        if: steps.validate.outcome == 'success'
+        env:
+          MANIFEST_PATH: ${{ runner.temp }}/drive-images-manifest.json
+          DOWNLOAD_DIR: ${{ runner.temp }}/drive-images
+        run: |
+          mkdir -p "$DOWNLOAD_DIR"
+          count="$(jq length "$MANIFEST_PATH")"
+          for ((index=0; index<count; index++)); do
+            drive_file_id="$(jq -r ".[${index}].drive_file_id" "$MANIFEST_PATH")"
+            curl --fail --location --silent --show-error \
+              --dump-header "$DOWNLOAD_DIR/${index}.headers" \
+              "https://drive.usercontent.google.com/download?id=${drive_file_id}&export=download&confirm=t" \
+              --output "$DOWNLOAD_DIR/${index}.download"
+          done
+
+      - name: Validate and install the complete batch
+        if: steps.validate.outcome == 'success'
+        env:
+          MANIFEST_PATH: ${{ runner.temp }}/drive-images-manifest.json
+          DOWNLOAD_DIR: ${{ runner.temp }}/drive-images
+          CAMPAIGN_SLUG: ${{ steps.validate.outputs.campaign_slug }}
+        run: |
+          python scripts/import_drive_images.py \
+            --campaign-slug "$CAMPAIGN_SLUG" \
+            --images-json "$(cat "$MANIFEST_PATH")" \
+            --download-dir "$DOWNLOAD_DIR"
+
+      - name: Commit and push imported images
+        if: steps.validate.outcome == 'success'
+        id: commit
+        env:
+          CAMPAIGN_SLUG: ${{ steps.validate.outputs.campaign_slug }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "campaigns/${CAMPAIGN_SLUG}/images/"
+          git diff --cached --quiet && { echo "No image changes to commit." >&2; exit 1; }
+          git commit -m "Import Drive images for ${CAMPAIGN_SLUG}"
+          git push origin "HEAD:${DEFAULT_BRANCH}"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Comment machine-readable success result and close Issue
+        if: success()
+        uses: actions/github-script@v7
+        env:
+          MANIFEST_PATH: ${{ runner.temp }}/drive-images-manifest.json
+          CAMPAIGN_SLUG: ${{ steps.validate.outputs.campaign_slug }}
+          COMMIT_SHA: ${{ steps.commit.outputs.sha }}
+        with:
+          script: |
+            const fs = require('fs');
+            const slug = process.env.CAMPAIGN_SLUG;
+            const result = {
+              status: 'success',
+              campaign_slug: slug,
+              commit_sha: process.env.COMMIT_SHA,
+              images: JSON.parse(fs.readFileSync(process.env.MANIFEST_PATH, 'utf8')).map(image => {
+                const path = `campaigns/${slug}/images/${image.filename}`;
+                const encoded = path.split('/').map(encodeURIComponent).join('/');
+                return {
+                  filename: image.filename,
+                  repository_path: path,
+                  github_pages_url: `https://${context.repo.owner.toLowerCase()}.github.io/${context.repo.repo}/${encoded}`
+                };
+              })
+            };
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `画像取り込みに成功しました。\n\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number, state: 'closed'
+            });
+
+      - name: Comment safe failure result
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const reason = '${{ steps.authorize.outcome }}' === 'failure'
+              ? 'Issue作成者にrepository admin権限がありません。'
+              : '入力検証、重複検査、画像取得、画像内容検証、または保存に失敗しました。Actionsログを管理者が確認してください。';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `画像取り込みに失敗しました（fail-closed）。${reason} 秘密情報や外部レスポンス本文はコメントしていません。`
+            });
