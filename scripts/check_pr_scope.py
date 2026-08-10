@@ -13,16 +13,29 @@ def main() -> int:
     parser.add_argument("--head", required=True)
     args = parser.parse_args()
     output = subprocess.check_output(
-        ["git", "diff", "--name-only", "--diff-filter=ACMRD", args.base, args.head], text=True
+        ["git", "diff", "--name-status", "--diff-filter=ACMRD", args.base, args.head], text=True
     )
-    files = [line for line in output.splitlines() if line]
+    changes = [
+        (parts[0], parts[-1])
+        for line in output.splitlines()
+        if line
+        for parts in [line.split("\t")]
+    ]
+    files = [path for _, path in changes]
     matches = [SLUG.fullmatch(path) for path in files]
     slugs = {match.group(1) for match in matches if match}
-    eligible = bool(files) and all(matches) and len(slugs) == 1
+    changed_images = [
+        path
+        for (status, path), match in zip(changes, matches)
+        if match and match.group(2).startswith("images/") and not status.startswith("D")
+    ]
+    eligible = bool(files) and all(matches) and len(slugs) == 1 and not changed_images
     print(f"eligible={'true' if eligible else 'false'}")
     print(f"slug={next(iter(slugs)) if len(slugs) == 1 else ''}")
     if not eligible:
-        # System/template PRs remain reviewable, but can never enter auto-merge.
+        # System/template PRs and campaign PRs which add or modify images remain
+        # reviewable, but can never enter auto-merge. Image deletion retains the
+        # existing scope behavior.
         return 0
     required = {f"campaigns/{next(iter(slugs))}/campaign.json", f"campaigns/{next(iter(slugs))}/mail.html"}
     if not required.issubset(files):

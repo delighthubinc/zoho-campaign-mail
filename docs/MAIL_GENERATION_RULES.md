@@ -16,25 +16,31 @@
 
 通常フローは、campaign作成 → PR → `PR Campaign Validation` → GitHub Appによるauto-merge → GitHub Pages deployment → 公開HTML検証 → Zoho Campaigns Draft自動作成まで動作確認済みであり、今後もこの経路を正式運用とします。
 
-1. ChatGPT上でユーザーとメルマガ文面・件名・画像・CTA等を調整する。
-2. ユーザーが内容を確定する。
-3. ChatGPTがCodex用の実装プロンプトを作成する。
-4. ユーザーがそのプロンプトをCodexへ投入する。
-5. Codexがcampaignディレクトリを作成・更新し、テスト、コミット、PR作成を行う。
-6. `PR Campaign Validation` が変更範囲、全テスト、Python compile、HTML再生成一致、placeholder、CTA、UTM、画像、Secret混入、その他既存validatorを自動検証する。
-7. 通常campaignだけを変更したPRは、required checks成功後にGitHub Appが自動マージする。システム・テンプレート変更PRはユーザーレビュー待ちとする。
-8. main反映後、GitHub Actionsが同一commitのGitHub Pages deployment完了を待つ。
-9. GitHub Actionsが公開HTML、campaign識別情報、画像、CTA等を再検証する。
-10. 公開検証がすべて成功した場合だけ、Zoho Campaigns Draftを自動作成する。
-11. 自動化はここで停止する。
-12. ユーザーがZoho Campaigns画面でDraftを確認する。
-13. ユーザーがZoho Campaignsの **Test Email** 機能を手動実行し、自分宛てに確認メールを送る。
-14. ユーザーがメール本文、画像、リンク、表示崩れ等を確認する。
-15. 問題がなければ、ユーザーがZoho Campaigns画面から本番送信を最終判断し、手動実行する。
+1. ユーザーがChatGPTへメルマガ制作を依頼する。
+2. ChatGPTがGitHubの最新正式テンプレート、Google Drive等の原稿、画像素材、CTAを確認する。
+3. ChatGPTとユーザーが文面、件名、使用画像、CTA等を調整する。
+4. 使用画像をCodex実装前にGitHubへ取り込む。campaign固有画像は `campaigns/<slug>/images/`、共通画像は `assets/common/` に置く。Google Drive上の公開画像には既存の **Import Drive Image**、**Import Drive Images**、**Import Common Asset** workflowを使用する。
+5. GitHub Pages上で参照する正式な画像URLを確定する。
+6. ChatGPTがGitHubの正式テンプレート、GitHubへ取り込み済みの正式画像URL、本番CTAを使ってHTMLプレビューを作成する。
+7. ユーザーがChatGPT上で文面、件名、画像、CTA、HTMLレイアウトを確認してFIXする。
+8. ChatGPTがCodex用の実装プロンプトを作成する。
+9. Codexが承認済み内容を実装する。通常変更するcampaign成果物は原則 `campaigns/<slug>/campaign.json` と `campaigns/<slug>/mail.html` とする。
+10. CodexはGitHub上に既に存在する画像URLを参照し、画像binaryを新規追加・変更・コピーしない。
+11. CodexはGitHubの既存正式テンプレートを使用して `mail.html` を生成する。
+12. CodexはChatGPT上で承認済みのデザインを独自に改善・再設計・再解釈しない。
+13. Codexがテスト、コミット、PR作成を行う。
+14. `PR Campaign Validation` が変更範囲、全テスト、Python compile、HTML再生成一致、placeholder、CTA、UTM、画像、Secret混入、その他既存validatorを自動検証する。
+15. 通常campaignだけを変更したPRは、required checks成功後にGitHub Appがauto-mergeする。システム・テンプレート変更PRはユーザーレビュー待ちとする。
+16. main反映後、GitHub Actionsが同一commitのGitHub Pages deployment完了を待つ。
+17. GitHub Actionsが公開HTML、campaign識別情報、画像、CTA等を再検証する。
+18. 公開検証がすべて成功した場合だけ、Zoho Campaigns Draftを自動作成する。
+19. 自動化はここで停止する。
+20. ユーザーがZoho Campaigns画面でDraftを確認し、**Test Email** を手動実行して本文、画像、リンク、表示崩れ等を確認する。
+21. 問題がなければ、ユーザーがZoho Campaigns画面から本番送信を最終判断し、手動実行する。
 
 したがって、自動化の終点は **Zoho Campaigns Draft作成**、人間の確認開始点は **Zoho CampaignsのTest Email**、本番送信は **ユーザーによる手動操作**です。
 
-`PR Campaign Validation` は全unit test、全Pythonファイルのcompile、`git diff --check`、対象HTML再生成とchecked-in差分、placeholder、仮URL、Zoho差し込みタグ、CTA/UTM、バナーとCTAの同一性、共通画像およびSecretらしき値を検査します。1つの `campaigns/<slug>/campaign.json`、`mail.html`、`images/*` だけを変更し、JSONとHTMLを共に含むPRだけがauto-merge候補です。競合、required checkの失敗・未完了時はGitHub auto-mergeがマージしません。auto-mergeの操作には `GITHUB_TOKEN` を使わず、専用GitHub App installation tokenを使用します。これによりマージが作るmainのpush eventは抑止されず、後段workflowへ確実に接続します。
+`PR Campaign Validation` は全unit test、全Pythonファイルのcompile、`git diff --check`、対象HTML再生成とchecked-in差分、placeholder、仮URL、Zoho差し込みタグ、CTA/UTM、バナーとCTAの同一性、共通画像およびSecretらしき値を検査します。1つの `campaigns/<slug>/campaign.json` と `mail.html` を共に変更するPRだけがauto-merge候補です。画像の削除に関する既存仕様は維持しますが、`images/*` の新規追加・変更を含むcampaign PRはauto-merge対象外です。競合、required checkの失敗・未完了時はGitHub auto-mergeがマージしません。auto-mergeの操作には `GITHUB_TOKEN` を使わず、専用GitHub App installation tokenを使用します。これによりマージが作るmainのpush eventは抑止されず、後段workflowへ確実に接続します。
 
 template、workflow、script、config、docs等を含むシステム変更PR、複数campaign、対象外パス、draft PR、fork PRは自動マージしません。これらはユーザーレビューを必須とします。
 
@@ -61,23 +67,25 @@ Zoho CampaignsのTest Email、本番送信、予約送信は自動化せず、`s
 
 ### ChatGPT
 
-- Google Driveの対象セミナーフォルダ、セミナー概要、過去メルマガ、公開用画像素材の確認
+- GitHub上の最新正式テンプレートの確認
+- Google Drive等の原稿、セミナー概要、過去メルマガ、公開用画像素材、CTAの整理
+- 必要画像がGitHubへ取り込み済みであることと、GitHub Pages上の正式画像URLの確認
+- 未取り込み画像がある場合、Codex用プロンプト作成前に既存workflowによる画像取り込み工程を案内
 - `template_type` の選択とメール原稿の作成
 - CTA本体URLの確認、UTMパラメータの確定（不明時はユーザーへ確認）
 - campaignデータ相当の情報整理
-- GitHub上の最新テンプレートと本番CTA URLを使用したHTMLプレビューの作成
-- ユーザーとの文章・画像・デザイン調整と、承認内容の確定
-- 内容確定後のCodex用実装プロンプト作成
+- GitHub上の最新テンプレート、取り込み済みの正式画像URL、本番CTAを使用したHTMLプレビューの作成
+- ユーザーとの文章・画像・HTMLレイアウト調整と、承認内容の確定
+- 正式画像URLを使ったHTMLのFIX後にCodex用実装プロンプトを作成
 
 ### Codex
 
 - 承認済み内容のcampaignデータへの反映
-- 必要画像のGitHub配置
 - 既存の正式テンプレートによる本番HTML生成
 - HTML要件・リンク・原稿・既存機能のテスト
 - コミットとPR作成（Pages公開・検証・Draft作成はActionsが自動実行）
 
-Codexは承認済みデザインを独自に改善・再設計しません。差異や実装上の制約がある場合は、変更前に確認対象として明示します。
+Codexは承認済みデザインを独自に改善・再設計しません。差異や実装上の制約がある場合は、変更前に確認対象として明示します。通常campaign実装ではPNG、JPG/JPEG、GIF、WebPその他のbinary fileを新規追加・変更・コピーせず、取り込み済みのGitHub Pages画像URLを `campaign.json` で参照します。必要画像がGitHub上に存在しない、正式画像URLが不明、またはDrive素材しかなく未取り込みの場合は推測やbinary追加をせず、「画像を先にGitHubへ取り込む必要がある」と報告してfail-closedで停止します。
 
 ### GitHub Actions
 
