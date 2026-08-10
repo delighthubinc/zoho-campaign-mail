@@ -54,7 +54,11 @@ cp .env.example .env
 
 `mailing_lists` は「表示名 → listkey」の対応で、配信先が増えた場合も項目を追加できます。
 
-## 1. 画像を配置する
+## 1. Codex実装前に画像を取り込む
+
+使用画像は、ChatGPTがHTMLプレビューを確定しCodex用プロンプトを作るより前にGitHubへ取り込みます。campaign固有画像は `campaigns/<slug>/images/`、ロゴや担当者画像などの共通画像は `assets/common/` に配置し、GitHub Pages上の正式画像URLを確定してください。公開Google Drive画像は、既存の **Import Drive Image**、**Import Drive Images**、**Import Common Asset** workflowを用途に応じて使用します。これらの仕組みをCodexで作り直したり、通常campaign PRへ画像binaryを含めたりしません。
+
+以下はローカル素材を取り込む既存方法です。
 
 画像マニフェストの例（`work/images.json`）:
 
@@ -75,7 +79,7 @@ python3 scripts/publish_images.py \
   --manifest work/images.json
 ```
 
-Google Drive の `drive_file_id` / `drive_url` はインターフェースだけを定義しており、ダウンロード処理は未実装です。Driveから手動で安全に取得したファイルを `source` で指定してください。
+Google Drive上の公開画像は上記の既存workflowで取り込みます。取り込み後、GitHub Pages上で参照する正式URLをChatGPTのHTMLプレビューと `campaign.json` の両方で使用します。
 
 ## 2. HTMLメールを生成する
 
@@ -115,7 +119,7 @@ python3 scripts/build_email.py \
 
 ## 3. PR以降のVer.2自動処理
 
-通常フローは、ChatGPT上で文面・件名・画像・CTAを確定し、ChatGPTが作成した実装プロンプトをユーザーがCodexへ投入するところから始まります。Codexがcampaignを実装・テストしてPRを作成した後、通常の単一campaign反映ではGitHub Actionsが次を自動実行します。ユーザーがPages表示を確認してから手動でDraft workflowを起動する操作はありません。
+通常フローは、画像をCodex実装前にGitHubへ取り込み、ChatGPTがGitHubの正式テンプレート・GitHub Pages上の正式画像URL・本番CTAを使ったHTMLをユーザーとFIXしてから、実装プロンプトをCodexへ渡します。Codexは画像binaryを追加・変更・コピーせず、原則として `campaign.json` と `mail.html` だけを実装します。必要画像または正式URLが未確定なら推測せず、「画像を先にGitHubへ取り込む必要がある」と報告してfail-closedで停止します。Codexが実装・テストしてPRを作成した後、通常の単一campaign反映ではGitHub Actionsが次を自動実行します。ユーザーがPages表示を確認してから手動でDraft workflowを起動する操作はありません。
 
 1. PR変更範囲、全テスト、compile、HTML再生成一致、placeholder、CTA・UTM、画像、Secretを検証
 2. required checks成功かつ競合なしの場合だけauto-merge
