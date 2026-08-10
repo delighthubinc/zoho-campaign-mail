@@ -24,7 +24,17 @@ jobs:
         with: {fetch-depth: 2}
       - id: changed
         run: |
-          campaigns="$(git diff --name-only '${{ github.event.before }}' '${{ github.sha }}' | sed -n 's#^campaigns/\([^/]*\)/campaign.json$#\1#p' | sort -u | jq -Rsc 'split("\n") | map(select(length > 0))')"
+          campaigns="$(
+            git diff --name-only --diff-filter=ACMR '${{ github.event.before }}' '${{ github.sha }}' -- 'campaigns/*/campaign.json' \
+              | sed -n 's#^campaigns/\([^/]*\)/campaign.json$#\1#p' \
+              | sort -u \
+              | while IFS= read -r slug; do
+                  if [ -f "campaigns/$slug/campaign.json" ]; then
+                    printf '%s\n' "$slug"
+                  fi
+                done \
+              | jq -Rsc 'split("\n") | map(select(length > 0))'
+          )"
           echo "campaigns=$campaigns" >> "$GITHUB_OUTPUT"
 
   publish-and-draft:
