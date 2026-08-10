@@ -19,10 +19,19 @@ EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 SECRET_NAMES = ("ZOHO_CLIENT_ID", "ZOHO_CLIENT_SECRET", "ZOHO_REFRESH_TOKEN")
 CREATE_CAMPAIGN_PATH = "/api/v1.1/createCampaign"
 TIMEOUT_SECONDS = 30
+SAFE_PROVIDER_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 
 
 class DraftError(Exception):
     """A safe, user-facing validation or API error."""
+
+
+class JsonResponse(dict):
+    """Parsed JSON plus transport metadata that never includes the raw body."""
+
+    def __init__(self, value: dict, http_status: int | None) -> None:
+        super().__init__(value)
+        self.http_status = http_status
 
 
 def load_json(path: Path) -> dict:
@@ -160,6 +169,7 @@ def request_json(url: str, data: dict[str, str], headers: dict[str, str] | None 
     )
     try:
         with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+            http_status = response.status
             raw = response.read().decode("utf-8", errors="replace")
     except HTTPError as exc:
         # Do not print the response body: providers can echo sensitive request data.
@@ -172,7 +182,7 @@ def request_json(url: str, data: dict[str, str], headers: dict[str, str] | None 
         raise DraftError("APIレスポンスがJSONではありません") from exc
     if not isinstance(value, dict):
         raise DraftError("APIレスポンスの形式が不正です")
-    return value
+    return JsonResponse(value, http_status)
 
 
 def access_token(config: dict, secrets: dict[str, str]) -> str:
@@ -187,8 +197,8 @@ def access_token(config: dict, secrets: dict[str, str]) -> str:
     )
     token = response.get("access_token")
     if not isinstance(token, str) or not token:
-        error = response.get("error", "unknown_oauth_error")
-        raise DraftError(f"Access Tokenを取得できませんでした: {error}")
+        # OAuth provider fields are untrusted and can contain echoed secrets.
+        raise DraftError("Access Tokenを取得できませんでした: oauth_error=unavailable")
     return token
 
 
@@ -211,13 +221,41 @@ def redacted_summary(
     }
 
 
+def safe_provider_code(value: object, sensitive_values: tuple[str, ...] = ()) -> str:
+    """Return only a bounded provider code, never arbitrary response content."""
+    if isinstance(value, bool):
+        return "unavailable"
+    if isinstance(value, int):
+        candidate = str(value)
+        if value < 0 or len(candidate) > 18:
+            return "unavailable"
+    elif isinstance(value, str) and SAFE_PROVIDER_CODE_RE.fullmatch(value):
+        candidate = value
+    else:
+        return "unavailable"
+    if any(candidate == secret for secret in sensitive_values if secret):
+        return "unavailable"
+    return candidate
+
+
+def safe_http_status(value: object) -> str:
+    """Format a real HTTP status without accepting arbitrary provider content."""
+    return str(value) if isinstance(value, int) and not isinstance(value, bool) and 100 <= value <= 599 else "unavailable"
+
+
 def validate_create_response(response: dict, sensitive_values: tuple[str, ...] = ()) -> None:
-    """Reject Zoho business errors without echoing any response-body fields."""
+    """Reject business errors with only allowlisted, bounded diagnostics."""
     code = response.get("code")
     if code in (200, "200"):
         return
-    # Do not log code/message/uri: all originate in the provider response body.
-    raise DraftError("Zoho Campaigns APIがDraft作成エラーを返しました（レスポンス本文は出力しません）")
+    http_status = safe_http_status(getattr(response, "http_status", None))
+    provider_code = safe_provider_code(code, sensitive_values)
+    raise DraftError(
+        "Zoho Campaigns APIがDraft作成エラーを返しました（レスポンス本文は出力しません）\n"
+        f"transport_http_status={http_status}\n"
+        f"provider_code={provider_code}\n"
+        "provider_outcome=non_success"
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -253,17 +291,18 @@ def main() -> int:
         if not isinstance(args.campaign_name, str) or not isinstance(args.subject, str) or not args.campaign_name.strip() or not args.subject.strip():
             raise DraftError("campaign-name と subject は空にできません")
         payload = build_payload(config, args)
-        print(
-            json.dumps(
-                redacted_summary(config, payload, args.campaign_slug, args.mailing_list),
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
         if args.dry_run:
+            print(
+                json.dumps(
+                    redacted_summary(config, payload, args.campaign_slug, args.mailing_list),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
             print("dry-run: 外部通信は行っていません。")
             return 0
 
+        print("operation=createCampaign_draft_only")
         secrets = load_secrets(args.env_file)
         token = access_token(config, secrets)
         endpoint = config["campaigns_base_url"].rstrip("/") + CREATE_CAMPAIGN_PATH
