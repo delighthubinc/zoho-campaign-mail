@@ -115,13 +115,15 @@ python3 scripts/build_email.py \
 
 ## 3. PR以降のVer.2自動処理
 
-Codexが生成したHTMLと画像をテストしてPRを作成した後、通常の単一campaign反映ではGitHub Actionsが次を自動実行します。ユーザーがPages表示を確認してから手動でDraft workflowを起動する操作はありません。
+通常フローは、ChatGPT上で文面・件名・画像・CTAを確定し、ChatGPTが作成した実装プロンプトをユーザーがCodexへ投入するところから始まります。Codexがcampaignを実装・テストしてPRを作成した後、通常の単一campaign反映ではGitHub Actionsが次を自動実行します。ユーザーがPages表示を確認してから手動でDraft workflowを起動する操作はありません。
 
 1. PR変更範囲、全テスト、compile、HTML再生成一致、placeholder、CTA・UTM、画像、Secretを検証
 2. required checks成功かつ競合なしの場合だけauto-merge
 3. mainと同一commitのGitHub Pages deployment完了を待機
 4. 公開HTML、campaign識別情報、画像、CTAをHTTPで検証
 5. 検証成功時だけZoho Campaigns Draftを作成して停止
+
+通常フローの動作確認は、campaign作成からPR検証、GitHub Appによるauto-merge、Pages deployment、公開内容検証、Zoho Campaigns Draft作成まで完了しています。**自動化の終点はDraft作成**です。その後、ユーザーがZoho Campaigns画面でDraftを確認し、同画面の **Test Emailを手動実行**して本文・画像・リンク・表示を確認します。問題がなければ、ユーザー自身が本番送信を最終判断して手動実行します。
 
 公開URLは次の形式です。
 
@@ -146,7 +148,11 @@ dry-runの出力には、Topic、設定済み配信リスト、From、Reply-To�
 
 ### 実装しない操作
 
-- メールの送信、テスト送信、予約送信
+- Zoho CampaignsのTest Emailの自動実行
+- メールの本番送信、予約送信
+- `sendCampaign` 系APIの使用
+- 既存Draftの送信操作
+- ユーザーの最終確認を経ない外部へのメール送信
 - 既存Draftまたはキャンペーンの更新
 - UPDATE系API
 - Google Drive API認証・ダウンロード（初期実装では未対応）

@@ -14,19 +14,25 @@
 
 ### Ver.2（通常のcampaign本番反映）
 
-ChatGPTで原稿・本番CTA・HTMLを承認した後は、Codex実装 → PR → Actions検証 → branch protection下のauto-merge → 同一commitのGitHub Pages deployment待機 → 公開HTML/画像/CTA検証 → Zoho Campaigns Draft自動作成で停止します。人間の承認点をChatGPT上のHTML承認と、Zoho UIで確認後の最終的な本番送信判断に集約します。
+通常フローは、campaign作成 → PR → `PR Campaign Validation` → GitHub Appによるauto-merge → GitHub Pages deployment → 公開HTML検証 → Zoho Campaigns Draft自動作成まで動作確認済みであり、今後もこの経路を正式運用とします。
 
-1. ユーザーがChatGPTへセミナー制作を依頼する。
-2. ChatGPTが本書、GitHubの最新テンプレート、Google Driveのセミナー概要・過去原稿・公開用画像を確認する。
-3. ChatGPTが `template_type` を選択し、原稿、本番CTA・UTM、campaignデータ相当の情報、GitHubと同じテンプレートによるHTMLプレビューを作る。CTAが不明な場合は推測せず確認する。
-4. ユーザーがChatGPT上で原稿、CTA、画像、HTMLを承認する。
-5. ユーザーがCodexへ承認済み内容の実装を依頼する。
-6. Codexが承認内容をcampaign JSONと画像へ反映し、既存テンプレートで `mail.html` を生成してローカルテスト、コミット、PR作成を行う。
-7. GitHub ActionsがPRの変更範囲、全テスト、Python compile、差分、再生成一致、HTML・CTA・UTM・画像・Secret検査を行う。
-8. 通常の単一campaign反映PRでrequired checksがすべて成功し、競合がなければGitHub auto-mergeがmainへ反映する。システム・テンプレート変更PRはユーザーレビュー待ちとする。
-9. GitHub Actionsが同一commitのPages deployment完了を待ち、公開HTML、campaign識別情報、画像、CTAを自動検証する。
-10. 公開検証がすべて成功した場合だけ、GitHub ActionsがZoho Campaigns Draftを自動作成して停止する。
-11. ユーザーがZoho Campaigns上のDraftを確認し、リポジトリ外で本番送信するか最終判断する。本番送信操作は自動化しない。
+1. ChatGPT上でユーザーとメルマガ文面・件名・画像・CTA等を調整する。
+2. ユーザーが内容を確定する。
+3. ChatGPTがCodex用の実装プロンプトを作成する。
+4. ユーザーがそのプロンプトをCodexへ投入する。
+5. Codexがcampaignディレクトリを作成・更新し、テスト、コミット、PR作成を行う。
+6. `PR Campaign Validation` が変更範囲、全テスト、Python compile、HTML再生成一致、placeholder、CTA、UTM、画像、Secret混入、その他既存validatorを自動検証する。
+7. 通常campaignだけを変更したPRは、required checks成功後にGitHub Appが自動マージする。システム・テンプレート変更PRはユーザーレビュー待ちとする。
+8. main反映後、GitHub Actionsが同一commitのGitHub Pages deployment完了を待つ。
+9. GitHub Actionsが公開HTML、campaign識別情報、画像、CTA等を再検証する。
+10. 公開検証がすべて成功した場合だけ、Zoho Campaigns Draftを自動作成する。
+11. 自動化はここで停止する。
+12. ユーザーがZoho Campaigns画面でDraftを確認する。
+13. ユーザーがZoho Campaignsの **Test Email** 機能を手動実行し、自分宛てに確認メールを送る。
+14. ユーザーがメール本文、画像、リンク、表示崩れ等を確認する。
+15. 問題がなければ、ユーザーがZoho Campaigns画面から本番送信を最終判断し、手動実行する。
+
+したがって、自動化の終点は **Zoho Campaigns Draft作成**、人間の確認開始点は **Zoho CampaignsのTest Email**、本番送信は **ユーザーによる手動操作**です。
 
 `PR Campaign Validation` は全unit test、全Pythonファイルのcompile、`git diff --check`、対象HTML再生成とchecked-in差分、placeholder、仮URL、Zoho差し込みタグ、CTA/UTM、バナーとCTAの同一性、共通画像およびSecretらしき値を検査します。1つの `campaigns/<slug>/campaign.json`、`mail.html`、`images/*` だけを変更し、JSONとHTMLを共に含むPRだけがauto-merge候補です。競合、required checkの失敗・未完了時はGitHub auto-mergeがマージしません。auto-mergeの操作には `GITHUB_TOKEN` を使わず、専用GitHub App installation tokenを使用します。これによりマージが作るmainのpush eventは抑止されず、後段workflowへ確実に接続します。
 
@@ -37,6 +43,8 @@ main反映後の `Verify Pages and Create Zoho Draft` は、固定sleepだけで
 公開検証に成功した場合だけ、`campaign.json` の `campaign_slug`、`subject`、本文非表示の `zoho_campaign_name` と `config/zoho.json` の `default_mailing_lists` を使い、`createCampaign` APIでDraftを作成します。手動workflow入力はありません。同一commit SHA・slug・Zoho管理名のSHA-256 markerをautomation専用GitHub IssueへAPI呼出し前に予約し、再実行時の二重作成をfail-closedで防ぎます。API失敗後も自動再作成せず、ledgerを人間が調査します。workflow concurrencyも同一SHAの同時実行を直列化します。
 
 OAuth値は `ZOHO_CLIENT_ID`、`ZOHO_CLIENT_SECRET`、`ZOHO_REFRESH_TOKEN` Repository SecretsからDraft作成stepだけへ渡します。成功・失敗を問わずZoho APIレスポンス本文、token、secretは通常ログへ出力・artifact化しません。自動化は `createCampaign` 以外のZoho操作を行わず、`sendcampaign`、テストメール、予約送信、本番送信、contact listへの実配信を明示的に禁止します。
+
+Zoho CampaignsのTest Email、本番送信、予約送信は自動化せず、`sendCampaign`系APIを使用しません。既存Draftの送信操作も行わず、ユーザーの最終確認なしに外部へメールを送信しません。
 
 通常の予約済みmarkerでDraft作成が停止した場合だけ、管理者は `EMERGENCY - Recover Zoho Draft Only` を手動実行できます。current mainのcampaign JSONと公開HTMLを再検証し、ledgerが `reserved` かつ `created` でない場合だけ、明示確認文字列を要求してDraft作成を1回試行します。実行前にZoho UIでDraftが存在しないことを確認します。このworkflowも送信APIを持たず、通常フローでは使用しません。
 
@@ -59,8 +67,9 @@ OAuth値は `ZOHO_CLIENT_ID`、`ZOHO_CLIENT_SECRET`、`ZOHO_REFRESH_TOKEN` Repos
 - campaignデータ相当の情報整理
 - GitHub上の最新テンプレートと本番CTA URLを使用したHTMLプレビューの作成
 - ユーザーとの文章・画像・デザイン調整と、承認内容の確定
+- 内容確定後のCodex用実装プロンプト作成
 
-### Codex / GitHub
+### Codex
 
 - 承認済み内容のcampaignデータへの反映
 - 必要画像のGitHub配置
@@ -80,9 +89,10 @@ Actionsはメール送信、テスト送信、予約送信を行いません。
 
 ### ユーザー
 
-- ChatGPT上で原稿とHTMLデザインを確認し、FIXを判断
+- ChatGPT上で文面・件名・画像・CTA・HTMLデザインを最終確定し、実装プロンプトをCodexへ投入
 - システム・テンプレート変更PRだけをレビュー（通常campaign反映PRのPages確認・Draft作成操作は不要）
-- 自動作成されたZoho Draftを確認し、実際にメールを送信するかどうかを最終判断
+- 自動作成されたZoho Draftを確認し、Zoho CampaignsのTest Emailを手動実行して自分宛てに確認
+- 本番送信を最終判断し、Zoho Campaigns画面から手動実行
 
 ## `template_type` の正式ルール
 
