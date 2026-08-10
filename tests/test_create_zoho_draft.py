@@ -47,10 +47,17 @@ class DraftPayloadTests(unittest.TestCase):
     def test_operational_fixed_values_and_content_url(self) -> None:
         payload = draft.build_payload(self.config, self.args)
 
-        # The previously successful createCampaign request did not send resfmt.
-        # Zoho validates that field differently from the OAuth response format,
-        # so it must not be added to the form payload.
-        self.assertNotIn("resfmt", payload)
+        self.assertEqual(payload["resfmt"], "json")
+        self.assertEqual(
+            set(payload),
+            {
+                "resfmt", "campaignname", "subject", "from_name", "from_email",
+                "reply_to", "content_url", "topicId", "list_details",
+            },
+        )
+        encoded_payload = draft.urlencode(payload)
+        self.assertEqual(encoded_payload.count("resfmt="), 1)
+        self.assertIn("resfmt=json", encoded_payload)
         self.assertEqual(payload["topicId"], "17155000000008017")
         self.assertEqual(payload["from_name"], "天野晴香／株式会社Delight Hub")
         self.assertEqual(payload["from_email"], "h-amano01@delight-hub.jp")
@@ -64,11 +71,11 @@ class DraftPayloadTests(unittest.TestCase):
             self.config, payload, self.args.campaign_slug, self.args.mailing_list
         )
         self.assertEqual(summary["campaign_slug"], "2026-example")
-        self.assertNotIn("resfmt", summary)
+        self.assertEqual(summary["resfmt"], "json")
         for secret_name in (*draft.SECRET_NAMES, "access_token"):
             self.assertNotIn(secret_name, json.dumps(summary))
 
-    def test_dry_run_omits_resfmt_without_loading_secrets(self) -> None:
+    def test_dry_run_prints_lowercase_resfmt_without_loading_secrets(self) -> None:
         argv = [
             "create_zoho_draft.py", "--campaign-slug", self.args.campaign_slug,
             "--campaign-name", self.args.campaign_name, "--subject", self.args.subject,
@@ -79,7 +86,7 @@ class DraftPayloadTests(unittest.TestCase):
             draft, "load_secrets", side_effect=AssertionError("must not load secrets")
         ), redirect_stdout(output):
             self.assertEqual(draft.main(), 0)
-        self.assertNotIn('"resfmt"', output.getvalue())
+        self.assertEqual(output.getvalue().count('"resfmt": "json"'), 1)
 
     def test_defaults_build_the_same_list_details_as_explicit_selection(self) -> None:
         defaults = self.config["default_mailing_lists"]
