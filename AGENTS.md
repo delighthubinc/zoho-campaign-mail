@@ -1,13 +1,13 @@
 # AI / Codex 実務ルール
 
 - セミナー告知メールは既存テンプレートを原則使用し、毎回ゼロからHTMLデザインを作らない。
-- 新規セミナーは `template_type: seminar` を使用し、`preset` は `standard` / `large` の初期構成案としてChatGPTが提案する。最終表示と順序は `blocks` を正とし、preset選択後もcampaign単位で追加・削除・並び替えできる。既存の `large_seminar` 等は後方互換用として変更しない。
+- 新規セミナーは `template_type: seminar` を使用し、`preset` は `standard` / `large` の初期構成案としてChatGPTが提案する。preset選択後もcampaign単位で追加・削除・並び替えできるが、ユーザーがFIXした `mail.html` の表示を正とする。既存の `large_seminar` 等は後方互換用として変更しない。
 - ChatGPTはセミナー内容を把握したうえで、今回の主訴求・切り口をユーザーへ積極的に提案する。過去配信との重複確認は必須要件にしないが、ユーザーから過去訴求や避けたい切り口の情報があれば優先して反映する。
-- 必要事項（preset、主訴求、CTA、UTM、画像等）が制作に支障ない程度に揃った後は、細かな工程ごとに何度も承認を求めず、ChatGPT側で件名・本文・CTA・UTM・blocks・HTMLプレビューまで一気に作成して提示する。ユーザーは完成HTMLを見て必要な修正を指示する。
+- 必要事項（preset、主訴求、CTA、UTM、画像等）が制作に支障ない程度に揃った後は、細かな工程ごとに何度も承認を求めず、ChatGPT側で件名・本文・CTA・UTM・HTMLプレビューまで一気に作成して提示する。ユーザーは完成HTMLを見て必要な修正を指示する。
 - CTA本体URLなど、推測すると誤配信・誤誘導につながる情報が不明な場合だけは確認して停止する。UTMやpresetは候補を明示するが、独立した承認ゲートとして毎回「このUTMでよいですか」「このpresetでよいですか」と細切れに確認しない。
 - ChatGPTで承認済みの原稿・画像・ブロック構成・デザインをCodexが勝手に再設計しない。
 - テンプレート変更が必要な場合、既存テンプレートを破壊せず、ユーザー確認対象の変更案として扱う。
-- メール生成の正式ルールは `docs/MAIL_GENERATION_RULES.md`、デザインの正本は `templates/` を参照する。ChatGPT用とCodex用の別テンプレートを作らない。
+- メール生成の正式ルールは `docs/MAIL_GENERATION_RULES.md` を参照する。テンプレートは初期制作・デザイン参照に使い、FIX後の表示内容の正本はcampaignの `mail.html` とする。ChatGPT用とCodex用の別テンプレートを作らない。
 - Zoho Campaignsへの送信・テスト送信・予約送信は実装も実行もしない。Zoho Draft作成はHTMLのGitHub Pages公開・確認後に限り、最終送信判断は必ずユーザーが行う。
 - OAuthのClient ID、Client Secret、Refresh Token、Access Tokenをコード、設定JSON、生成物、ログへ出さない。
 - 本番HTMLに仮のCTA URLを残さない。CTA URLが不明な場合は推測せず、ユーザーへ確認する。
@@ -21,6 +21,14 @@
 - 同一Drive画像を複数campaignで使用する場合も、各campaign専用ディレクトリへ別々に取り込む。これにより、配信済みcampaignが参照するGitHub Pages画像URLを将来の配信作業で上書き・削除しない。
 - 通常campaign実装でCodexが変更する成果物は原則 `campaigns/<slug>/campaign.json` と `campaigns/<slug>/mail.html` に限る。CodexはPNG、JPG/JPEG、GIF、WebPその他のbinary fileを新規追加・変更・コピーせず、`campaign.json` からChatGPTが事前に取り込んだcampaign専用GitHub Pages画像URLを参照する。
 - 今回使用すると確認したDrive画像がcampaign専用ディレクトリへ未取り込み、正式画像URLが不明、またはDrive素材しかない場合、Codexは画像やURLを推測せず、binary fileをPRへ含めない。「今回使用する画像を先にcampaign専用ディレクトリへ取り込む必要がある」と報告してfail-closedで停止する。
+
+## FIX済みHTML正本ルール
+
+- ChatGPTはユーザーと文面・レイアウト・CSS・レスポンシブ挙動まで確認し、FIX済みHTMLファイルそのものをCodexへ渡す。
+- CodexはFIX済みHTMLを再解釈、再設計、blocksへの変換、再生成をせず、そのまま `mail.html` として配置する。
+- `campaign.json` はcampaign識別、Zoho管理名、件名、CTA/UTM、画像等の管理・Validation用であり、HTML生成元ではない。`content_source` は `fixed_html` のみを許可する。
+- `scripts/build_email.py` は初期HTML生成、デザイン参照、開発・テスト用途として残すが、通常campaignの再生成一致は必須条件にしない。
+- PR前にChatGPTがCodexの差分とテスト結果をレビューし、ユーザーOK後にユーザーがCodex画面でPR作成する。
 
 ## Ver.2 自動化フロー
 

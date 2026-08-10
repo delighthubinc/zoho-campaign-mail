@@ -1,12 +1,12 @@
 # メール生成 正式運用ルール
 
-本書は、セミナー告知メール制作に関して人間・ChatGPT・Codexが共通で参照する正式仕様です。GitHub上の本書と `templates/` を正本とし、ChatGPT用と本番生成用に別々のテンプレートを作りません。
+本書は、セミナー告知メール制作に関して人間・ChatGPT・Codexが共通で参照する正式仕様です。GitHub上の本書を運用仕様の正本とします。`templates/` は初期HTMLとデザインの参照元であり、ユーザーFIX後はcampaignごとの `mail.html` そのものを表示内容の正本とします。
 
 ## 基本原則
 
 - 通常のChatGPT Chatから制作を開始し、原稿だけでなくHTMLプレビューまでユーザー確認を行います。
-- 既存テンプレートを再利用し、イベント固有情報はcampaignデータと可変blockで差し替えます。
-- ChatGPTはGitHubにある最新テンプレートでプレビューを作ります。Codexは承認済みの原稿・画像・block構成・デザインを同じテンプレートで本番反映し、再解釈や再設計をしません。
+- 既存テンプレートを初期制作に再利用します。ユーザーが文面・レイアウト・CSS・レスポンシブ挙動まで確認したFIX済みHTMLを最終成果物とします。
+- ChatGPTはGitHubにある最新テンプレートと過去デザインを参照してプレビューを作ります。CodexにはFIX済みHTMLファイルそのものを渡し、Codexは文章・構造・CSSを再解釈、再設計、blocks化、再生成せず、そのまま `mail.html` に配置します。
 - テンプレート自体の変更が必要な場合は既存版を無断で破壊せず、影響範囲を示した変更案としてユーザー確認対象にします。
 - ChatGPT制作工程では、必要事項が揃った後にpreset、UTM、blockなどを工程ごとに細切れで何度も承認させません。完成HTMLを主要な確認ゲートとします。
 - GitHub Pages上のHTML確認が終わるまでZoho Draftを作成しません。送信・テスト送信・予約送信はこのリポジトリの自動化対象外で、最終送信判断は必ずユーザーが行います。
@@ -22,7 +22,7 @@ ChatGPTは新規セミナー制作のたびに、原則として次の流れで�
    - 過去配信との重複確認は必須要件にしない。
    - 過去メルマガを参照できる場合は参考にしてよい。
    - ユーザーから「前回はこの訴求だった」「今回はこの切り口を使いたい」等の情報があれば、それを優先する。
-4. `preset` は `standard` / `large` から適切な候補を提案する。presetは初期構成の補助情報であり、最終表示と順序は `blocks` を正とする。
+4. `preset` は `standard` / `large` から適切な候補を提案する。presetとblocksは初期構成の補助情報であり、最終表示と順序はFIX済み `mail.html` を正とする。
 5. CTA本体URLと、最低限 `utm_source`、`utm_medium`、`utm_campaign` の候補を整理する。`utm_content` は必要な場合のみ使用する。
 6. **今回使用するGoogle Drive画像を決め、ユーザーが認識できる形で明示する。**
    - 少なくともDrive上のファイル名を列挙する。
@@ -35,6 +35,12 @@ ChatGPTは新規セミナー制作のたびに、原則として次の流れで�
 10. presetやUTMだけを理由に、毎回独立して「このpresetでよいですか」「このUTMでよいですか」と細切れの承認を要求しない。ただし、CTA本体URLなど推測すると誤配信・誤誘導につながる情報が不明な場合は確認して停止する。
 11. ユーザーが完成HTMLを確認し、「別の訴求にしたい」「前回と重複するので変えたい」「画像を差し替えたい」等の修正を指示する。
 12. 文面・画像・CTA・UTM・blocks・HTMLがFIXした後に、ChatGPTがCodex用実装プロンプトを作る。
+
+## 成果物の役割
+
+- `mail.html`: メール本文、デザイン、CSS、レスポンシブ挙動を含む表示内容の唯一の正本。
+- `campaign.json`: `campaign_slug`、`subject`、`zoho_campaign_name`、CTA/UTM、使用画像などを保持する管理・Validation・automation用ファイル。HTML生成元ではない。`content_source` は `fixed_html` のみを正式値とし、validatorは未知値をfail-closedで拒否する。
+- `scripts/build_email.py`: 削除せず、既存テンプレートからの初期HTML作成、デザイン参照、開発・テストに利用できる。ただし通常campaignのchecked-in HTMLとのbyte-for-byte再生成一致は要件ではない。
 
 ## 正式フロー
 ### Ver.2（通常campaign本番反映）
@@ -51,13 +57,13 @@ ChatGPTは新規セミナー制作のたびに、原則として次の流れで�
 8. ChatGPTがCodex用実装プロンプトを作成する。
 9. Codexが承認済み内容を実装する。通常変更するcampaign成果物は原則 `campaigns/<slug>/campaign.json` と `campaigns/<slug>/mail.html` とする。
 10. CodexはGitHub上に既に存在する今回campaign専用画像URLを参照し、画像binaryを新規追加・変更・コピーしない。
-11. Codexは既存正式テンプレートを使って `mail.html` を生成し、承認済みデザインを独自に改善・再設計・再解釈しない。
+11. CodexはFIX済みHTMLファイルをそのまま `mail.html` に配置し、campaign.jsonから再生成せず、独自に改善・再設計・再解釈しない。
 12. Codexが必要なテストを実行し、コミットまで行う。
 13. **Codex実装完了後、その結果をChatGPTへ戻す。ChatGPTが差分、テスト結果、想定外変更の有無をレビューする。**
 14. 問題があればChatGPTがCodex向け修正指示を作り、再実装する。
 15. **ChatGPTレビューで問題なしとなり、ユーザーがOKした後、ユーザーがCodex画面でPR作成操作を実行する。**
 16. PR作成操作は未自動化ではなく、**意図的な人間の承認ゲート**として残す。Codexが自動的にPR作成まで完了する前提にしない。
-17. `PR Campaign Validation` が変更範囲、全テスト、Python compile、HTML再生成一致、placeholder、CTA、UTM、画像、Secret混入、その他既存validatorを自動検証する。
+17. `PR Campaign Validation` が変更範囲、全テスト、Python compile、placeholder、仮値、CTA/UTM、campaign画像、共通画像、Zoho宛名タグ、JavaScript、Secret混入、HTML解析可能性等を自動検証する。campaign.jsonからのHTML再生成一致は検証しない。
 18. 通常campaignだけを変更したPRは、required checks成功後にGitHub Appがauto-mergeする。システム・テンプレート変更PRはユーザーレビュー待ちとする。
 19. main反映後、GitHub Actionsが同一commitのGitHub Pages deployment完了を待つ。
 20. GitHub Actionsが公開HTML、campaign識別情報、画像、CTA等を再検証する。
@@ -158,9 +164,9 @@ Actionsはメール送信、テスト送信、予約送信を行いません。
 
 ### 新規セミナー: `seminar`
 
-今後の新規セミナーcampaignは `template_type: seminar` を使用します。`preset` は任意fieldで、指定する場合は `standard` / `large` の2種類だけです。presetは初期構成案であり、表示blockを固定しません。campaign JSONに明示した `blocks` が最終表示と表示順の正です。
+今後の新規セミナーcampaignは初期HTML作成時に `template_type: seminar` を利用できます。`preset` は任意fieldで、指定する場合は `standard` / `large` の2種類だけです。presetと `blocks` は初期構成案であり、FIX後の最終表示と表示順の正本ではありません。
 
-HTML確認後のblock追加・削除・並び替えは `campaign.json` のblocksを変更して正式generatorで再生成します。任意HTMLはcampaignデータへ直接渡さず、許可された構造化fieldをgeneratorがescapeしてtableベースHTMLへ変換します。
+初期HTMLはgeneratorで作成できますが、HTML確認後の文面・block・CSS・レスポンシブ調整はChatGPT上のHTMLへ反映し、ユーザーがFIXします。FIX済みHTMLをcampaign.jsonへ逆変換したり、正式generatorで再生成したりしません。
 
 ### 許可block schema
 
@@ -196,7 +202,7 @@ HTML確認後のblock追加・削除・並び替えは `campaign.json` のblocks
 - `templates/email_template.html`: `template_type`を持たない従来形式との後方互換用
 - `config/email_defaults.json`: 会社情報、担当者情報、共通画像URL、Zoho宛名タグ、共通注意書き
 
-新規seminar campaign JSONは識別情報、`template_type`、`preset`、`subject`、`preheader`、共通`cta`、構造化`blocks`を保持します。会社情報や署名をcampaignごとにコピーしません。確定済みデータから `scripts/build_email.py` で `mail.html` を再生成します。
+新規seminar campaign JSONは識別情報、`content_source: "fixed_html"`、`subject`、`zoho_campaign_name`、共通`cta`、campaign画像manifestを保持します。初期制作向けの `template_type`、`preset`、`blocks` を保持しても構いませんが、HTML生成元とは扱いません。会社情報や署名をcampaignごとにコピーしません。
 
 ## 全セミナーメール共通仕様
 
@@ -229,7 +235,7 @@ HTML確認後のblock追加・削除・並び替えは `campaign.json` のblocks
 
 ## PR Validation / auto-merge
 
-`PR Campaign Validation` は全unit test、全Pythonファイルのcompile、`git diff --check`、対象HTML再生成とchecked-in差分、placeholder、仮URL、Zoho差し込みタグ、CTA/UTM、バナーとCTAの同一性、共通画像、Secretらしき値等を検査します。
+`PR Campaign Validation` は全unit test、全Pythonファイルのcompile、`git diff --check`、placeholder、仮URL、Zoho差し込みタグ、CTA/UTM、campaign画像、バナーとCTAの同一性、共通画像、JavaScript、Secretらしき値等を検査します。対象HTMLの再生成とchecked-in差分検査は行いません。
 
 1つの `campaigns/<slug>/campaign.json` と `mail.html` を共に変更する通常campaign PRだけがauto-merge候補です。`images/*` の新規追加・変更を含むcampaign PRはauto-merge対象外です。競合、required check失敗・未完了時はマージしません。
 
