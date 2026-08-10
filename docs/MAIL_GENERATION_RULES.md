@@ -10,8 +10,23 @@
 - テンプレート自体の変更が必要な場合は既存版を無断で破壊せず、影響範囲を示した変更案としてユーザーの確認を受けます。
 - GitHub Pages上のHTML確認が終わるまでZoho Draftを作成しません。送信・テスト送信・予約送信はこのリポジトリの対象外で、最終送信判断は必ずユーザーが行います。
 
-## 正式フロー
+## ChatGPTでの制作開始からFIXまで（必須順序）
 
+ChatGPTは新規セミナー制作のたびに次の順序を守ります。presetとUTMは提案できますが、ユーザーの明示確認なしに確定または次工程へ進めません。
+
+1. GitHubの最新正式仕様、`templates/`、共通素材、取り込み済みcampaign素材を確認する。
+2. `preset` を `standard` / `large` のどちらにするか提案する。
+3. **「このpresetでよいですか？」と確認し、ユーザーの明示承認を得る。**
+4. presetを出発点として使用する`blocks`と順序の案を提示する。
+5. CTA本体URLと最低限 `utm_source`、`utm_medium`、`utm_campaign` の候補を提示する。
+6. **「このUTMでよいですか？」と確認し、ユーザーの明示承認を得る。**
+7. 使用画像を毎回棚卸しし、継続利用・新規・差し替えを明確にする。
+8. 新規・差し替え画像をCodex実装前に既存workflowでGitHubへ取り込む。
+9. GitHub Pages上の正式画像URL、承認済みCTA/UTM、正式generatorと同じ仕様でHTMLプレビューを作る。
+10. HTML確認中はcampaignデータ上のblocksを追加・削除・並び替え、再生成して調整する。
+11. 文面・画像・CTA・UTM・blocks・HTMLをユーザーがFIXした後にだけCodex用実装プロンプトを作る。
+
+## 正式フロー
 ### Ver.2（通常のcampaign本番反映）
 
 通常フローは、campaign作成 → PR → `PR Campaign Validation` → GitHub Appによるauto-merge → GitHub Pages deployment → 公開HTML検証 → Zoho Campaigns Draft自動作成まで動作確認済みであり、今後もこの経路を正式運用とします。
@@ -71,8 +86,8 @@ Zoho CampaignsのTest Email、本番送信、予約送信は自動化せず、`s
 - Google Drive等の原稿、セミナー概要、過去メルマガ、公開用画像素材、CTAの整理
 - 必要画像がGitHubへ取り込み済みであることと、GitHub Pages上の正式画像URLの確認
 - 未取り込み画像がある場合、Codex用プロンプト作成前に既存workflowによる画像取り込み工程を案内
-- `template_type` の選択とメール原稿の作成
-- CTA本体URLの確認、UTMパラメータの確定（不明時はユーザーへ確認）
+- 新規セミナーの `template_type: seminar`、preset候補、blocks案とメール原稿の作成。presetはユーザーの明示確認後に確定
+- CTA本体URLとcampaignごとのUTM候補を提示し、「このUTMでよいですか？」への明示確認後に確定
 - campaignデータ相当の情報整理
 - GitHub上の最新テンプレート、取り込み済みの正式画像URL、本番CTAを使用したHTMLプレビューの作成
 - ユーザーとの文章・画像・HTMLレイアウト調整と、承認内容の確定
@@ -102,26 +117,51 @@ Actionsはメール送信、テスト送信、予約送信を行いません。
 - 自動作成されたZoho Draftを確認し、Zoho CampaignsのTest Emailを手動実行して自分宛てに確認
 - 本番送信を最終判断し、Zoho Campaigns画面から手動実行
 
-## `template_type` の正式ルール
+## `template_type` / preset / blocksの正式ルール
 
-### `standard_seminar`
+### 新規セミナー: `seminar`
 
-通常の単発セミナー向けです。正式な種別名として予約されていますが、現時点では未実装です。実装されるまでは別種別へ読み替えず、必要性をユーザーへ報告します。
+今後の新規セミナーcampaignは `template_type: seminar` を使用します。`preset` は任意fieldで、指定する場合は `standard` / `large` の2種類だけです。ChatGPTが初期構成を提案するための補助情報です。presetは表示blockを固定しません。campaign JSONに明示した `blocks` が最終表示と表示順の唯一の正であり、presetと異なってもblocksを優先します。したがって、`large` から `keynote_speakers` を削除することも、`standard` へ追加することもできます。
 
-### `large_seminar`
+HTML確認後のblock追加・削除・並び替えは `campaign.json` のblocksだけを変更して正式generatorで再生成します。任意HTMLはcampaignデータへ渡さず、許可された構造化fieldをgeneratorがescapeしてtableベースHTMLへ変換します。
 
-フォーラム、大型イベント、複数登壇者・複数コンテンツを持つイベント向けです。`campaigns/forum-20260910` の「不動産未来フォーラム2026」をVer.1とします。
+### 許可block schema
+
+共通で `type` が必須です。`heading`、`subtitle`、`note` 等、以下で任意と記したfieldは省略できます。画像は `{ "url": "https://...", "alt": "..." }` 形式です。
+
+| type | 必須field | 任意field / 内容 |
+| --- | --- | --- |
+| `hero` | `image` | `notice`。画像は共通CTA URLへリンク |
+| `text` | `paragraphs`（文字列配列） | `heading` |
+| `event_date` | `date` | `note` |
+| `cta` | `label` | URL/UTMはcampaign直下の共通`cta`を使用 |
+| `speaker` | `name`, `company`, `title`, `image` | `heading`, `subtitle` |
+| `keynote_speakers` | `speakers`（speaker配列） | `heading` |
+| `benefits` | `items`（文字列配列） | `heading` |
+| `session_cards` | `sessions` | `heading` |
+| `image_text` | `heading`, `paragraphs`, `image` | `image_position` (`left` / `right`) |
+| `company_logos` | `logos`（画像配列） | `heading` |
+| `notice` | `text` | なし |
+| `divider` | なし | なし |
+| `event_info` | `items`（表示名と値のobject） | `heading` |
+
+`session_cards.sessions` の各要素は `time`、`company`、`title` が必須、`keynote`（boolean、既定false）が任意です。時間→会社名→講演タイトルの3段をtableベースで表示し、`keynote: true` の場合だけ「基調講演」バッジを付けます。
+
+### legacy compatibility
+
+`large_seminar` と予約済みの `standard_seminar` は削除しません。特に `campaigns/forum-20260910` は既存JSONを変更せず、`large_seminar` rendererでchecked-in `mail.html` と完全一致することを回帰テストで保証します。新規campaignで両者を使い分ける運用は行いません。
 
 ## テンプレートとcampaignデータ
 
-- `templates/base/email.html`: 全セミナーメール共通のロゴ、宛名、配信対象注意書き、基本スタイル、署名、レスポンシブ対応
-- `templates/seminar/large_seminar.html`: `large_seminar` のブロック順、余白、配色、情報階層
-- `templates/email_template.html`: `template_type` を持たない従来形式との後方互換用
+- `templates/base/email.html`: 全セミナー共通のロゴ、宛名、配信対象注意書き、基本スタイル、署名、レスポンシブ対応
+- `templates/seminar/seminar.html`: 汎用seminarのblocks挿入点。実レイアウトは安全なblock rendererが生成
+- `templates/seminar/large_seminar.html`: 既存`large_seminar`後方互換用
+- `templates/email_template.html`: `template_type`を持たない従来形式との後方互換用
 - `config/email_defaults.json`: 会社情報、担当者情報、共通画像URL、Zoho宛名タグ、共通注意書き（公開情報のみ）
 
-ChatGPTのプレビューとCodexの本番生成は、いずれも上記GitHubテンプレートを参照します。
+新規seminar campaign JSONは識別情報、`template_type`、`preset`、`subject`、`preheader`、共通`cta`と構造化`blocks`を保持します。会社情報や署名をcampaignごとにコピーしません。確定済みデータから `scripts/build_email.py` で `mail.html` を再生成します。
 
-campaign JSONはHTMLではなく、イベント固有の `template_type`、`subject`、`preheader`、`banner`、`intro`、`speakers`、`benefits`、`event_info`、`cta` 等を保持します。会社情報や署名をcampaignごとにコピーしません。確定済みcampaignデータから `scripts/build_email.py` で `mail.html` を生成します。
+画像運用はPR #23で確定した規則を維持します。配信ごとに全画像を棚卸しし、campaign固有画像は `campaigns/<slug>/images/`、共通画像は `assets/common/` へ既存import workflowでCodex実装前に取り込みます。差し替えはキャッシュや旧素材との混同を避けるため原則新しいfilenameを使います。Codexはbinary画像を追加・変更・コピーせず、campaign JSONから正式なGitHub Pages URLだけを参照します。未取り込み、正式URL不明、Drive素材のみのいずれかならURLを推測せずfail-closedで停止します。
 
 ## 全セミナーメール共通仕様
 
@@ -131,20 +171,20 @@ campaign JSONはHTMLではなく、イベント固有の `template_type`、`subj
 - campaignのバナー画像は、既存の `build_cta_url()` が返すCTAと完全に同じ本番URLへのリンクにします。バナー直下には、クリックでイベントページへ遷移する旨を表示します。バナー専用のURL生成ロジックや仮URLは使用しません。
 - 最下部には `assets/common/amano-haruka.png`、株式会社Delight Hub、企画部 天野 晴香、郵便番号、住所、`mailto:contact@delight-hub.jp`、`https://delight-hub.jp/` を含む共通署名を表示します。
 - 共通画像は `assets/common/` の正本をGitHub Pages URLで参照し、campaignディレクトリへ複製しません。会社、担当者、共通画像、宛名、注意書きは `config/email_defaults.json` で一元管理し、campaign JSONへコピーしません。
-- これらは `large_seminar` 固有ではなくbaseの責務です。将来の `standard_seminar` も同じbaseを経由して自動適用します。seminar templateにはイベント種別固有ブロックだけを置きます。
+- これらは個別blockやlegacy `large_seminar` 固有ではなくbaseの責務です。汎用 `seminar` も同じbaseを経由し、blocksにはイベント固有コンテンツだけを置きます。
 
 ## CTA URL / UTMの正式ルール
 
 ### 確定のタイミング
 
-- ChatGPTはHTMLプレビューを作る前に、CTAの本体URL、`utm_source`、`utm_medium`、`utm_campaign`、必要な場合は `utm_content` をユーザーと確定します。
+- ChatGPTはHTMLプレビューを作る前に、CTA本体URLと最低限 `utm_source`、`utm_medium`、`utm_campaign`（必要なら`utm_content`）のcampaignごとの候補を提示し、「このUTMでよいですか？」へのユーザーの明示確認後に確定します。
 - HTMLプレビューから本番HTMLまで同じ本番CTA URLを使用します。`#`、空文字、`example.com`、存在を確認できないURLなどの仮リンクを本番 `campaign.json` / `mail.html` に残しません。
 - 本体URLが不明な場合、ChatGPTやCodexはURLを推測・創作せず、ユーザー確認待ちとして報告します。
 
 ### UTM値
 
-- 標準値は `utm_source=zoho`、`utm_medium=email` です。
-- `utm_campaign` はキャンペーンごとに必ず確定し、`campaign_slug` と整合する機械可読で一貫した値にします。例: slug `forum-20260910` に対して `forum_20260910`。
+- `utm_source`、`utm_medium`、`utm_campaign` をシステム固定値にしません。ChatGPTがcampaignごとに候補と意図を提示し、ユーザーが明示確認した値を使用します。
+- `utm_campaign` はcampaignごとに必ず確定し、機械可読で一貫した候補を提案しますが、`campaign_slug`から無断で決定しません。
 - `utm_content` は任意です。同じ遷移先を位置別に計測する場合に `hero_cta`、`bottom_cta`、`banner` などを使用できます。指定しなければ各位置で同じCTA URLを使用します。
 
 ### campaign JSONの推奨形式

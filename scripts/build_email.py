@@ -17,6 +17,13 @@ BASE_TEMPLATE = ROOT / "templates" / "base" / "email.html"
 EMAIL_DEFAULTS = ROOT / "config" / "email_defaults.json"
 TEMPLATE_FILES = {
     "large_seminar": ROOT / "templates" / "seminar" / "large_seminar.html",
+    "seminar": ROOT / "templates" / "seminar" / "seminar.html",
+}
+SEMINAR_PRESETS = {"standard", "large"}
+SEMINAR_BLOCK_TYPES = {
+    "hero", "text", "event_date", "cta", "speaker", "keynote_speakers",
+    "benefits", "session_cards", "image_text", "company_logos", "notice",
+    "divider", "event_info",
 }
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
 IMAGE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -251,6 +258,197 @@ def render_large_seminar(
     return fill(base, replacements).rstrip() + "\n"
 
 
+
+def optional_text(data: dict, key: str, default: str = "") -> str:
+    value = data.get(key, default)
+    if not isinstance(value, str):
+        raise ValueError(f"{key} は文字列で指定してください")
+    return value.strip()
+
+
+def text_list(data: dict, key: str, label: str) -> list[str]:
+    value = data.get(key)
+    if not isinstance(value, list) or not value or not all(
+        isinstance(item, str) and item.strip() for item in value
+    ):
+        raise ValueError(f"{label}.{key} は空でない文字列の配列で指定してください")
+    return [item.strip() for item in value]
+
+
+def section_heading(value: str) -> str:
+    return (f'<h2 style="margin:0 0 24px;text-align:center;font-size:24px;line-height:1.5;'
+            f'color:#102a4c;">{html.escape(value)}</h2>') if value else ""
+
+
+def speaker_cell(speaker: dict, label: str) -> str:
+    if not isinstance(speaker, dict):
+        raise ValueError(f"{label} はobjectで指定してください")
+    photo = image_tag(speaker.get("image"), 244, f"{label}.image")
+    name = require_text(speaker, "name")
+    company = require_text(speaker, "company")
+    title = require_text(speaker, "title")
+    subtitle = optional_text(speaker, "subtitle")
+    subtitle_html = (f'<p style="margin:0;font-size:13px;line-height:1.7;color:#4b5563;">'
+                     f'{escaped_multiline(subtitle)}</p>') if subtitle else ""
+    return ('<td class="speaker-column" valign="top" style="padding:0 10px 22px;">'
+            f'{photo}<p style="margin:16px 0 3px;font-size:20px;line-height:1.4;font-weight:700;color:#102a4c;">{html.escape(name)}</p>'
+            f'<p style="margin:0 0 12px;font-size:12px;line-height:1.6;color:#657184;">{html.escape(company)}</p>'
+            f'<p style="margin:0 0 8px;font-size:17px;line-height:1.55;font-weight:700;color:#102a4c;">{html.escape(title)}</p>{subtitle_html}</td>')
+
+
+def validate_seminar_data(content: dict) -> None:
+    """Validate the structured generic seminar schema without rendering arbitrary HTML."""
+    if content.get("template_type") != "seminar":
+        raise ValueError("template_type は seminar で指定してください")
+    preset = content.get("preset")
+    if preset is not None and preset not in SEMINAR_PRESETS:
+        raise ValueError("preset は省略するか standard または large で指定してください")
+    require_text(content, "subject")
+    require_text(content, "preheader")
+    build_cta_url(content.get("cta"))
+    blocks = require_list(content, "blocks")
+    for index, block in enumerate(blocks):
+        label = f"blocks[{index}]"
+        if not isinstance(block, dict):
+            raise ValueError(f"{label} はobjectで指定してください")
+        block_type = require_text(block, "type")
+        if block_type not in SEMINAR_BLOCK_TYPES:
+            raise ValueError(f"{label}.type は未対応です: {block_type}")
+        allowed_fields = {
+            "hero": {"type", "image", "notice"},
+            "text": {"type", "heading", "paragraphs"},
+            "event_date": {"type", "date", "note"},
+            "cta": {"type", "label"},
+            "speaker": {"type", "heading", "name", "company", "title", "subtitle", "image"},
+            "keynote_speakers": {"type", "heading", "speakers"},
+            "benefits": {"type", "heading", "items"},
+            "session_cards": {"type", "heading", "sessions"},
+            "image_text": {"type", "heading", "paragraphs", "image", "image_position"},
+            "company_logos": {"type", "heading", "logos"},
+            "notice": {"type", "text"},
+            "divider": {"type"},
+            "event_info": {"type", "heading", "items"},
+        }[block_type]
+        unknown = sorted(set(block) - allowed_fields)
+        if unknown:
+            raise ValueError(f"{label} に未対応のfieldがあります: {', '.join(unknown)}")
+        if block_type == "hero":
+            image_tag(block.get("image"), 640, f"{label}.image")
+        elif block_type == "text":
+            text_list(block, "paragraphs", label)
+            optional_text(block, "heading")
+        elif block_type == "event_date":
+            require_text(block, "date"); optional_text(block, "note")
+        elif block_type == "cta":
+            require_text(block, "label")
+        elif block_type == "speaker":
+            speaker_cell(block, label)
+        elif block_type == "keynote_speakers":
+            speakers = require_list(block, "speakers")
+            for speaker_index, speaker in enumerate(speakers):
+                speaker_cell(speaker, f"{label}.speakers[{speaker_index}]")
+        elif block_type == "benefits":
+            text_list(block, "items", label); optional_text(block, "heading")
+        elif block_type == "session_cards":
+            sessions = require_list(block, "sessions")
+            for session_index, session in enumerate(sessions):
+                session_label = f"{label}.sessions[{session_index}]"
+                if not isinstance(session, dict):
+                    raise ValueError(f"{session_label} はobjectで指定してください")
+                for key in ("time", "company", "title"):
+                    require_text(session, key)
+                if "keynote" in session and not isinstance(session["keynote"], bool):
+                    raise ValueError(f"{session_label}.keynote はbooleanで指定してください")
+            optional_text(block, "heading")
+        elif block_type == "image_text":
+            image_tag(block.get("image"), 260, f"{label}.image")
+            require_text(block, "heading"); text_list(block, "paragraphs", label)
+            if block.get("image_position", "left") not in {"left", "right"}:
+                raise ValueError(f"{label}.image_position は left または right で指定してください")
+        elif block_type == "company_logos":
+            logos = require_list(block, "logos")
+            for logo_index, logo in enumerate(logos):
+                image_tag(logo, 160, f"{label}.logos[{logo_index}]")
+            optional_text(block, "heading")
+        elif block_type == "notice":
+            require_text(block, "text")
+        elif block_type == "event_info":
+            items = block.get("items")
+            if not isinstance(items, dict) or not items:
+                raise ValueError(f"{label}.items は空でないobjectで指定してください")
+            if not all(isinstance(k, str) and k.strip() and isinstance(v, str) and v.strip()
+                       for k, v in items.items()):
+                raise ValueError(f"{label}.items のキーと値は空でない文字列で指定してください")
+            optional_text(block, "heading")
+
+
+def render_seminar_block(block: dict, index: int, content: dict, defaults: dict) -> str:
+    block_type = block["type"]
+    label = f"blocks[{index}]"
+    if block_type == "hero":
+        image = image_tag(block["image"], 640, f"{label}.image")
+        url = html.escape(build_cta_url(content["cta"]), quote=True)
+        notice = optional_text(block, "notice", require_text(defaults, "banner_notice"))
+        return (f'<tr><td style="padding:0;"><a href="{url}" style="display:block;text-decoration:none;">{image}</a></td></tr>'
+                f'<tr><td align="center" class="mobile-pad" style="padding:9px 22px 12px;font-size:12px;line-height:1.6;color:#657184;">{html.escape(notice)}</td></tr>')
+    if block_type == "text":
+        paragraphs = "".join(f'<p style="margin:0 0 18px;font-size:16px;line-height:1.9;color:#26354a;">{escaped_multiline(p)}</p>' for p in text_list(block, "paragraphs", label))
+        return f'<tr><td class="mobile-pad" style="padding:38px 48px;">{section_heading(optional_text(block, "heading"))}{paragraphs}</td></tr>'
+    if block_type == "event_date":
+        note = optional_text(block, "note")
+        return ('<tr><td class="mobile-pad" style="padding:20px 48px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;background-color:#f4f6f9;border-left:4px solid #c5a253;">'
+                f'<tr><td align="center" style="padding:18px 16px 4px;font-size:18px;line-height:1.5;font-weight:700;color:#102a4c;">{html.escape(require_text(block, "date"))}</td></tr>'
+                f'<tr><td align="center" style="padding:0 16px 18px;font-size:14px;line-height:1.5;color:#657184;">{html.escape(note)}</td></tr></table></td></tr>')
+    if block_type == "cta":
+        data = dict(content["cta"]); data["label"] = require_text(block, "label")
+        return f'<tr><td class="mobile-pad" style="padding:28px 48px 38px;">{cta_table(data)}</td></tr>'
+    if block_type in {"speaker", "keynote_speakers"}:
+        speakers = [block] if block_type == "speaker" else block["speakers"]
+        heading = optional_text(block, "heading", "登壇者" if block_type == "speaker" else "基調講演")
+        cells = "".join(speaker_cell(s, f"{label}.speakers[{i}]") for i, s in enumerate(speakers))
+        return f'<tr><td class="mobile-pad" style="padding:42px 40px;background-color:#f4f6f9;">{section_heading(heading)}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr>{cells}</tr></table></td></tr>'
+    if block_type == "benefits":
+        rows = "".join(f'<tr><td valign="top" style="padding:0 12px 14px 0;font-weight:700;color:#c5a253;">{i:02d}</td><td style="padding:0 0 14px;font-size:15px;line-height:1.7;color:#26354a;">{html.escape(item)}</td></tr>' for i, item in enumerate(text_list(block, "items", label), 1))
+        return f'<tr><td class="mobile-pad" style="padding:42px 48px;">{section_heading(optional_text(block, "heading", "このイベントで得られること"))}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">{rows}</table></td></tr>'
+    if block_type == "session_cards":
+        cards = []
+        for session in block["sessions"]:
+            badge = '<span style="display:inline-block;margin-left:8px;padding:3px 7px;background-color:#c5a253;color:#ffffff;font-size:11px;font-weight:700;">基調講演</span>' if session.get("keynote", False) else ""
+            cards.append('<tr><td style="padding:0 0 14px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;border:1px solid #d8dee8;">'
+                         f'<tr><td style="padding:13px 18px;background-color:#102a4c;font-size:14px;font-weight:700;color:#ffffff;">{html.escape(require_text(session, "time"))}{badge}</td></tr>'
+                         f'<tr><td style="padding:16px 18px 5px;font-size:13px;color:#657184;">{html.escape(require_text(session, "company"))}</td></tr>'
+                         f'<tr><td style="padding:0 18px 18px;font-size:17px;line-height:1.6;font-weight:700;color:#102a4c;">{html.escape(require_text(session, "title"))}</td></tr></table></td></tr>')
+        return f'<tr><td class="mobile-pad" style="padding:42px 48px;background-color:#f4f6f9;">{section_heading(optional_text(block, "heading", "セッション"))}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">{"".join(cards)}</table></td></tr>'
+    if block_type == "image_text":
+        image = image_tag(block["image"], 260, f"{label}.image")
+        text_html = "".join(f'<p style="margin:0 0 14px;font-size:15px;line-height:1.8;color:#26354a;">{escaped_multiline(p)}</p>' for p in text_list(block, "paragraphs", label))
+        image_cell = f'<td class="speaker-column" width="45%" valign="top" style="padding:0 18px 18px 0;">{image}</td>'
+        text_cell = f'<td class="speaker-column" valign="top" style="padding:0 0 18px;"><h2 style="margin:0 0 16px;font-size:22px;line-height:1.5;color:#102a4c;">{html.escape(require_text(block, "heading"))}</h2>{text_html}</td>'
+        cells = image_cell + text_cell if block.get("image_position", "left") == "left" else text_cell + image_cell
+        return f'<tr><td class="mobile-pad" style="padding:42px 48px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr>{cells}</tr></table></td></tr>'
+    if block_type == "company_logos":
+        logos = "".join(f'<td class="speaker-column" align="center" valign="middle" style="padding:12px;">{image_tag(logo, 160, f"{label}.logos[{i}]")}</td>' for i, logo in enumerate(block["logos"]))
+        return f'<tr><td class="mobile-pad" style="padding:38px 48px;">{section_heading(optional_text(block, "heading", "参加企業"))}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr>{logos}</tr></table></td></tr>'
+    if block_type == "notice":
+        return f'<tr><td class="mobile-pad" style="padding:20px 48px;font-size:13px;line-height:1.7;color:#657184;">{escaped_multiline(require_text(block, "text"))}</td></tr>'
+    if block_type == "divider":
+        return '<tr><td class="mobile-pad" style="padding:14px 48px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td height="1" style="height:1px;background-color:#d8dee8;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>'
+    rows = "".join(f'<tr><th width="88" valign="top" align="left" style="padding:9px 12px 9px 0;border-bottom:1px solid #d8dee8;font-size:14px;line-height:1.6;color:#102a4c;">{html.escape(k)}</th><td valign="top" style="padding:9px 0;border-bottom:1px solid #d8dee8;font-size:14px;line-height:1.6;color:#26354a;">{escaped_multiline(v)}</td></tr>' for k, v in block["items"].items())
+    return f'<tr><td class="mobile-pad" style="padding:42px 48px;background-color:#f4f6f9;">{section_heading(optional_text(block, "heading", "開催概要"))}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">{rows}</table></td></tr>'
+
+
+def render_seminar(content: dict, base: str, layout: str, defaults: dict | None = None) -> str:
+    defaults = defaults or load_json(EMAIL_DEFAULTS)
+    validate_seminar_data(content)
+    blocks = "".join(render_seminar_block(block, index, content, defaults)
+                     for index, block in enumerate(content["blocks"]))
+    layout = fill(layout, {"{{BLOCKS}}": blocks})
+    replacements = seminar_base_replacements(defaults)
+    replacements.update({"{{TITLE}}": html.escape(require_text(content, "subject")),
+                         "{{PREHEADER}}": html.escape(require_text(content, "preheader")),
+                         "{{CONTENT}}": layout})
+    return fill(base, replacements).rstrip() + "\n"
+
 def render(content: dict, template: str, image_base_url: str) -> str:
     heading = require_text(content, "heading")
     preheader = content.get("preheader", "")
@@ -360,7 +558,8 @@ def main() -> int:
                 raise ValueError(f"未対応の template_type です: {template_type}（対応: {supported}）")
             base = BASE_TEMPLATE.read_text(encoding="utf-8")
             layout = TEMPLATE_FILES[template_type].read_text(encoding="utf-8")
-            built = render_large_seminar(content, base, layout)
+            built = (render_seminar(content, base, layout) if template_type == "seminar"
+                     else render_large_seminar(content, base, layout))
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(built, encoding="utf-8")
         print(f"生成しました: {output.relative_to(ROOT)}")
