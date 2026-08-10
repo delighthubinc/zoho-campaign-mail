@@ -1,0 +1,59 @@
+{
+  "campaign_slug": "automation-smoke-20260810",
+  "zoho_campaign_name": "Zoho自動Draft動作確認_20260810_01",
+  "template_type": "large_seminar",
+  "subject": "【動作確認】Zoho Campaigns Draft自動作成テスト",
+  "preheader": "GitHub ActionsからZoho CampaignsのDraftが自動作成されることを確認するための動作確認用メールです。",
+  "banner": {
+    "url": "https://delighthubinc.github.io/zoho-campaign-mail/assets/common/delight-hub-logo.png",
+    "alt": "Zoho Campaigns Draft自動作成テスト"
+  },
+  "intro": [
+    "Zoho Campaigns Draft自動作成テスト",
+    "このメールは、GitHub ActionsからZoho CampaignsのDraftが自動作成されることを確認するための動作確認用メールです。",
+    "本メールは送信せず、Draft作成のみを確認します。"
+  ],
+  "event_date": "2026年8月10日",
+  "event_note": "通常フロー動作確認",
+  "speakers": [
+    {
+      "name": "確認項目 1",
+      "company": "GitHub Actions",
+      "image": {
+        "url": "https://delighthubinc.github.io/zoho-campaign-mail/assets/common/delight-hub-logo.png",
+        "alt": "Delight Hub"
+      },
+      "title": "公開HTML検証",
+      "subtitle": "GitHub Pagesへの公開とHTML検証を確認します。"
+    },
+    {
+      "name": "確認項目 2",
+      "company": "Zoho Campaigns",
+      "image": {
+        "url": "https://delighthubinc.github.io/zoho-campaign-mail/assets/common/amano-haruka.png",
+        "alt": "天野晴香"
+      },
+      "title": "Draft自動作成",
+      "subtitle": "送信せず、Draft作成のみを確認します。"
+    }
+  ],
+  "benefits": [
+    "PR Campaign Validationの成功を確認",
+    "GitHub Pages deploymentと公開HTML検証を確認",
+    "Zoho Campaigns Draftの自動作成を確認"
+  ],
+  "event_info": {
+    "用途": "通常フロー動作確認",
+    "送信": "実施しない",
+    "終点": "Zoho Campaigns Draft作成"
+  },
+  "cta": {
+    "label": "Delight Hub公式サイト",
+    "base_url": "https://delight-hub.jp/",
+    "utm": {
+      "source": "zoho",
+      "medium": "email",
+      "campaign": "automation_smoke_20260810"
+    }
+  }
+}
