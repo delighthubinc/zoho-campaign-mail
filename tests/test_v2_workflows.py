@@ -104,5 +104,22 @@ class V2WorkflowSafetyTests(unittest.TestCase):
         self.assertIn("state:created", workflow)
         self.assertIn("reserved but not created", workflow)
 
+    def test_chat_image_import_is_admin_gated_and_reuses_batch_importer(self):
+        workflow = (ROOT / ".github/workflows/chat-image-import.yml").read_text(encoding="utf-8")
+        self.assertIn("issues:", workflow)
+        self.assertIn("types: [opened]", workflow)
+        self.assertIn("github.event.issue.title == '[automation:image-import]'", workflow)
+        escaped_title = "[automation" + chr(92) + ":image-import]"
+        self.assertNotIn(escaped_title, workflow)
+        self.assertIn("access.data.permission !== 'admin'", workflow)
+        self.assertIn("scripts/import_drive_images.py", workflow)
+        self.assertIn("destination already exists", (ROOT / "scripts/import_drive_images.py").read_text())
+        self.assertIn("github_pages_url", workflow)
+        self.assertIn("if: failure()", workflow)
+
+    def test_image_only_push_cannot_select_a_zoho_draft_campaign(self):
+        workflow = (ROOT / ".github/workflows/publish-and-create-draft.yml").read_text(encoding="utf-8")
+        self.assertIn("-- 'campaigns/*/campaign.json'", workflow)
+
 if __name__ == "__main__":
     unittest.main()

@@ -21,7 +21,7 @@ ChatGPTは新規セミナー制作のたびに次の順序を守ります。pres
 5. CTA本体URLと最低限 `utm_source`、`utm_medium`、`utm_campaign` の候補を提示する。
 6. **「このUTMでよいですか？」と確認し、ユーザーの明示承認を得る。**
 7. 使用画像を毎回棚卸しし、継続利用・新規・差し替えを明確にする。
-8. 新規・差し替え画像をCodex実装前に既存workflowでGitHubへ取り込む。
+8. 新規・差し替え画像をCodex実装前に、**ChatGPTが `[automation:image-import]` Issueを作成 → GitHub Actionsが自動取込 → ChatGPTがIssue結果を確認 → repository fileを確認 → 正式GitHub Pages URLを確定**の順で取り込む。ユーザーへActions画面の操作を求めず、手動 **Import Drive Images** はIssue bridgeが技術的に失敗した場合の管理者fallbackに限る。
 9. GitHub Pages上の正式画像URL、承認済みCTA/UTM、正式generatorと同じ仕様でHTMLプレビューを作る。
 10. HTML確認中はcampaignデータ上のblocksを追加・削除・並び替え、再生成して調整する。
 11. 文面・画像・CTA・UTM・blocks・HTMLをユーザーがFIXした後にだけCodex用実装プロンプトを作る。
@@ -34,7 +34,18 @@ ChatGPTは新規セミナー制作のたびに次の順序を守ります。pres
 1. ユーザーがChatGPTへメルマガ制作を依頼する。
 2. ChatGPTがGitHubの最新正式テンプレート、Google Drive等の原稿、画像素材、CTAを確認する。
 3. ChatGPTとユーザーが文面、件名、使用画像、CTA等を調整する。
-4. 使用画像をCodex実装前にGitHubへ取り込む。campaign固有画像は `campaigns/<slug>/images/`、共通画像は `assets/common/` に置く。Google Drive上の公開画像には既存の **Import Drive Image**、**Import Drive Images**、**Import Common Asset** workflowを使用する。
+4. 使用画像をCodex実装前にGitHubへ取り込む。campaign固有画像は `campaigns/<slug>/images/`、共通画像は `assets/common/` に置く。新規・差し替えのcampaign画像は、ChatGPTがGitHub connectorからタイトルが完全一致する `[automation:image-import]` Issueを作成し、strict JSON本文に `campaign_slug` と1〜20件の `images`（`drive_file_id`、`filename`）だけを指定する。Actionsが既存 **Import Drive Images** と同じ検証・取込処理を実行するため、ユーザーはGitHub Actions画面を操作しない。
+
+   ```json
+   {
+     "campaign_slug": "forum-20260910-0811",
+     "images": [
+       {"drive_file_id": "18xGRVkAAn7IAwGaF0AZ4gz8pp82R_uaU", "filename": "banner.png"}
+     ]
+   }
+   ```
+
+   Issue作成者はrepository adminに限定し、slug、Drive ID、単一filename、画像拡張子、件数、取得内容をfail-closedで検証する。同名の既存画像は上書きせず、新しいfilenameで再申請する。成功コメントのpathとGitHub Pages URLを確認した後、ChatGPTはrepository file自体も再確認する。Issue経路が技術的に失敗した場合だけ、管理者が既存 **Import Drive Images** をfallbackとして手動実行できる。
 5. GitHub Pages上で参照する正式な画像URLを確定する。
 6. ChatGPTがGitHubの正式テンプレート、GitHubへ取り込み済みの正式画像URL、本番CTAを使ってHTMLプレビューを作成する。
 7. ユーザーがChatGPT上で文面、件名、画像、CTA、HTMLレイアウトを確認してFIXする。
@@ -85,7 +96,8 @@ Zoho CampaignsのTest Email、本番送信、予約送信は自動化せず、`s
 - GitHub上の最新正式テンプレートの確認
 - Google Drive等の原稿、セミナー概要、過去メルマガ、公開用画像素材、CTAの整理
 - 必要画像がGitHubへ取り込み済みであることと、GitHub Pages上の正式画像URLの確認
-- 未取り込み画像がある場合、Codex用プロンプト作成前に既存workflowによる画像取り込み工程を案内
+- 未取り込み画像がある場合、Codex用プロンプト作成前に専用画像取込Issueを作成し、完了コメントと実際のrepository fileの両方を確認。確認できたGitHub Pages正式URLだけでHTMLプレビューへ進む
+- Issue経由の自動取込が技術的に失敗した場合だけ理由を説明し、管理者向けfallbackとして既存 **Import Drive Images** 手動workflowを案内
 - 新規セミナーの `template_type: seminar`、preset候補、blocks案とメール原稿の作成。presetはユーザーの明示確認後に確定
 - CTA本体URLとcampaignごとのUTM候補を提示し、「このUTMでよいですか？」への明示確認後に確定
 - campaignデータ相当の情報整理

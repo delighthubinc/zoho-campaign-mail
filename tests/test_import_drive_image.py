@@ -17,7 +17,10 @@ class ImportDriveImageTests(unittest.TestCase):
                 destination_for(slug, "banner.png")
 
     def test_rejects_unsafe_or_unsupported_filenames(self):
-        for filename in ("", "../x.png", "a/b.png", "a\\b.png", "a..png", "image.svg"):
+        for filename in (
+            "", "../x.png", "a/b.png", "a\\b.png", "a..png", "has space.png",
+            "line\nbreak.png", "image.svg",
+        ):
             with self.subTest(filename=filename), self.assertRaises(ValueError):
                 destination_for("campaign", filename)
 

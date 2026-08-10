@@ -1,10 +1,16 @@
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.import_drive_images import MAX_IMAGES, install_batch, parse_images_json
+from scripts.import_drive_images import MAX_IMAGES, install_batch, parse_images_json, parse_issue_body
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "scripts/import_drive_images.py"
 
 
 class ImportDriveImagesTests(unittest.TestCase):
@@ -61,6 +67,101 @@ class ImportDriveImagesTests(unittest.TestCase):
     def test_rejects_invalid_drive_file_id(self):
         with self.assertRaisesRegex(ValueError, "drive_file_id"):
             self.parse([{"drive_file_id": "bad id", "filename": "image.png"}])
+
+    def test_parses_strict_issue_body(self):
+        body = json.dumps({
+            "campaign_slug": "forum-20260910",
+            "images": [{"drive_file_id": "valid_ID-1", "filename": "banner.png"}],
+        })
+        self.assertEqual(
+            parse_issue_body(body),
+            ("forum-20260910", [{"drive_file_id": "valid_ID-1", "filename": "banner.png"}]),
+        )
+
+    def test_rejects_issue_body_with_extra_fields(self):
+        body = json.dumps({"campaign_slug": "campaign", "images": [], "note": "free text"})
+        with self.assertRaisesRegex(ValueError, "exactly"):
+            parse_issue_body(body)
+
+    def test_existing_destination_fails_closed(self):
+        images = [{"drive_file_id": "first", "filename": "existing.png"}]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            destination = root / "campaigns/campaign/images/existing.png"
+            destination.parent.mkdir(parents=True)
+            destination.write_bytes(b"existing")
+            downloads = root / "downloads"
+            downloads.mkdir()
+            previous = Path.cwd()
+            try:
+                os.chdir(root)
+                with self.assertRaisesRegex(ValueError, "already exists"):
+                    install_batch(images, "campaign", downloads)
+            finally:
+                os.chdir(previous)
+            self.assertEqual(destination.read_bytes(), b"existing")
+
+    def test_cli_help_succeeds(self):
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--help"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for option in ("--campaign-slug", "--images-json", "--issue-body", "--manifest"):
+            self.assertIn(option, result.stdout)
+
+    def test_cli_options_are_registered_only_once(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        for option in ("--campaign-slug", "--images-json", "--issue-body"):
+            self.assertEqual(source.count(f'parser.add_argument("{option}"'), 1)
+
+    def test_cli_accepts_manual_workflow_arguments(self):
+        images = [{"drive_file_id": "manual_ID-1", "filename": "manual.png"}]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / "manifest.json"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--campaign-slug", "manual-campaign",
+                    "--images-json", json.dumps(images),
+                    "--manifest", str(manifest),
+                ],
+                cwd=root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(manifest.read_text(encoding="utf-8")), images)
+
+    def test_cli_accepts_issue_bridge_arguments(self):
+        request = {
+            "campaign_slug": "issue-campaign",
+            "images": [{"drive_file_id": "issue_ID-1", "filename": "issue.webp"}],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            issue_body = root / "issue.json"
+            manifest = root / "manifest.json"
+            issue_body.write_text(json.dumps(request), encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--issue-body", str(issue_body),
+                    "--manifest", str(manifest),
+                ],
+                cwd=root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(manifest.read_text(encoding="utf-8")), request["images"])
 
     def test_batch_validation_finishes_before_any_install(self):
         png = b"\x89PNG\r\n\x1a\ncontent"
