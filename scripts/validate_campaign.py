@@ -186,7 +186,6 @@ def validate(data: dict, document: str, check_urls: bool = False) -> list[str]:
         for href, _text, _images, _formal in matching_buttons + linked_campaign_images + formal_links:
             if href != cta_url:
                 errors.append(f"正式CTAのURL/UTMがcampaign.jsonと一致しません: {href}")
-        # Catch alternate UTM variants of the CTA destination without treating unrelated links as CTA.
         for href in inspector.hrefs:
             if _without_query(href) == _without_query(cta_url) and href != cta_url:
                 errors.append(f"CTA遷移先に不一致のURL/UTMがあります: {href}")
@@ -198,6 +197,18 @@ def validate(data: dict, document: str, check_urls: bool = False) -> list[str]:
             errors.append(f"共通画像 {label_name} がHTMLに存在しません")
         if not _https_url(url):
             errors.append(f"共通画像 {label_name} が有効なHTTPS URLではありません")
+
+    decoded_document = html.unescape(document)
+    footer_fields = (
+        "company_name", "department", "contact_name", "postal_code",
+        "address", "email", "corporate_site_url",
+    )
+    for field in footer_fields:
+        value = defaults.get(field)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"共通署名設定 {field} が未設定です")
+        elif value not in decoded_document:
+            errors.append(f"共通署名 {field} がemail_defaults.jsonと一致しません")
 
     if check_urls and not errors:
         for url in dict.fromkeys(expected_images + common_images):
