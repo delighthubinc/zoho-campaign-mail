@@ -54,6 +54,12 @@ class CampaignValidationTests(unittest.TestCase):
         self.assertIn("campaign画像URL", errors)
         self.assertIn("共通画像 logo_url", errors)
 
+    def test_common_footer_must_match_email_defaults(self):
+        defaults = module.load_json(module.EMAIL_DEFAULTS)
+        bad = self.document.replace(defaults["contact_name"], "立原")
+        errors = "\n".join(module.validate(self.data, bad))
+        self.assertIn("共通署名 contact_name", errors)
+
     def test_javascript_and_empty_links_are_rejected(self):
         bad = self.document.replace("</body>", '<script>alert(1)</script><a href="#">bad</a></body>')
         errors = "\n".join(module.validate(self.data, bad))
