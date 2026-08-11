@@ -13,10 +13,25 @@
 
 - 制作開始時にGitHubで正式仕様・標準デザイン、Google Driveで今回のセミナー情報・素材を確認する。
 - 最初の返答でpreset、CTA、UTM、今回使用するDrive画像のファイル名＋用途をまとめて提示し、制作条件を1回で確認する。
-- 制作条件承認後、主訴求を3〜5案程度提案してユーザーに選んでもらう。
-- 訴求決定後は件名、preheader、本文、CTA、画像、HTMLプレビューまで一気に作成する。
+- 制作条件承認後、campaign固有画像の取込を開始し、並行して主訴求を3〜5案程度提案してユーザーに選んでもらう。
+- campaign固有画像を使うHTMLプレビューは、画像取込成功・repository file確認・GitHub Pages正式URL確定後に作成する。
+- 訴求決定後は件名、preheader、本文、CTA、画像、HTMLプレビューまで一気に作成する。ただし画像取込未完了時はプレビューを出さず、画像取込を先に解決する。
 - 既存block相当の表現は対応するblock / fragmentの実際のHTML/CSSを原則そのまま使用する。ユーザーから明示的な変更指示がない箇所を独自再設計しない。
 - campaign固有の変更はユーザーが指示した箇所だけに限定する。
+
+## HTMLプレビューQA
+
+ユーザーへ初稿・修正版HTMLプレビューを提示する前に、最低限以下を確認する。
+
+- campaign固有画像がすべてGitHub Pages正式URLから表示されること。
+- Google Drive直リンクやBase64埋め込みを通常プレビューの代替に使用していないこと。
+- 同一セクション、カード、本文が意図せず重複していないこと。
+- メール全体が標準シェル幅内に収まり、途中から横幅が広がっていないこと。
+- 共通署名・ロゴ・宛名・注意書きが `config/email_defaults.json` / base template と一致すること。
+- 件名、preheader、CTAラベル、CTA URL/UTMが今回の制作条件と一致すること。
+- スマホ幅で明らかな横スクロール、カード崩れ、意図しない縦並び等がないこと。
+
+QAで問題を見つけた場合はユーザー確認へ進む前に修正する。
 
 ## 共通シェル・署名
 
@@ -30,8 +45,12 @@
 
 - Delight Hubロゴ、共通署名画像等の固定素材だけ `assets/common/` を再利用する。
 - campaign固有画像は過去campaignとの再利用判定をせず、各campaignごとにGoogle Driveの元画像から `campaigns/<slug>/images/` へ取り込む。同一campaignに同一画像が正常に存在する場合のみ再取込不要。
+- Google Drive素材はImage Import Actionsから取得可能な共有状態であることを前提とする。取得できない場合はHTMLプレビューへ進まず、ユーザーへ共有設定の確認を依頼する。
 - ChatGPTは取込前または取込済み判断時に、対象Driveファイル名と用途を必ずユーザーへ明示する。
-- 未取込なら原則ChatGPTが `[automation:image-import]` Issueを作成し、Actionsで取り込む。完了後はIssue結果、repository file、GitHub Pages URLを確認する。
+- 未取込時の自動取込Issueは、タイトルを完全一致で `[automation:image-import]` とし、本文は既存workflowが要求する規定JSON形式（`campaign_slug` と `images`、各 `drive_file_id` / `filename`）にする。説明文形式やタイトルへのslug追記をしない。
+- 取込完了後はIssue結果、repository file、GitHub Pages正式URLを確認する。
+- campaign固有画像の正式GitHub Pages URLが確定する前に通常のHTMLプレビューを作成・FIXしない。
+- Google Drive直リンクやBase64埋め込みを、画像未取込時の暫定HTMLプレビューとして使用しない。
 - Codexは画像binaryを追加・変更・コピーしない。正式画像URLが未確定ならfail-closedで停止する。
 
 ## FIX済みHTMLの受け渡し
@@ -66,7 +85,9 @@
 ## 自動化
 
 - `PR Campaign Validation` はpull requestの `edited` イベントでも新規実行する。base変更時にClose→Reopenや古いrunの再実行を必要としない。
-- 通常campaign限定PRはrequired checks成功後、GitHub Appがauto-mergeする。
+- auto-merge有効化は `validate-campaign` jobが成功完了した後の別jobでのみ行う。Validation実行中にmergeを有効化しない。
+- auto-merge jobはPRのbaseが `main` の場合だけ実行する。base変更後は変更後のbase SHAに対する最新Validation成功を待ってからauto-mergeを有効化する。
+- 通常campaign限定PRは上記Validation成功後、GitHub Appがauto-mergeする。
 - template、workflow、script、config、docs等を含むシステム変更PRは自動マージせずユーザーレビュー待ちとする。
 - main反映後、GitHub Pages deploymentと公開HTML・画像・CTA等の検証が成功した場合だけZoho Campaigns Draftを作成する。
 - 自動化の終点はDraft作成。Test Email、予約、本番送信、`sendCampaign`系APIは実装・実行しない。
@@ -76,8 +97,10 @@
 ## 正式フロー要約
 
 Chatで制作条件確認
+→ campaign画像取込開始
 → 訴求決定
-→ 件名＋HTML制作・調整
+→ 画像取込成功・GitHub Pages正式URL確認
+→ 件名＋HTML制作・内部QA・調整
 → ユーザーFIX
 → ChatGPTがGitHub作業branchへ `mail.html` 保存
 → Codexが同branchで `campaign.json` 整備・検証（`mail.html` 変更禁止）
@@ -85,7 +108,7 @@ Chatで制作条件確認
 → ユーザーOK
 → Codex画面からPR作成
 → GitHubでbaseが `main` か確認・必要なら変更
-→ Validation
+→ 最新Validation成功
 → auto-merge
 → GitHub Pages
 → 公開検証
