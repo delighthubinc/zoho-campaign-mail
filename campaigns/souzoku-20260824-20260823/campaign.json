@@ -1,0 +1,41 @@
+{
+  "campaign_slug": "souzoku-20260824-20260823",
+  "zoho_campaign_name": "相続・空き家4社合同セミナー_20260823",
+  "template_type": "seminar",
+  "preset": "large",
+  "subject": "【明日開催】相続・空き家案件を取り切る。発掘から営業体制まで4社が解説",
+  "preheader": "明日13時開催。相続・空き家案件を「発掘→集客→媒介→体制」まで、4社の実践ノウハウで一気通貫に解説します。",
+  "cta": {
+    "label": "無料でセミナーに申し込む",
+    "base_url": "https://eslab.branding-t.co.jp/2026/07/31/seminar-sozoku-4step/",
+    "utm": {
+      "source": "delighthub",
+      "medium": "email",
+      "campaign": "souzoku2027_seminar",
+      "content": "0823_lastcall"
+    }
+  },
+  "content_source": "fixed_html",
+  "images": [
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/souzoku-20260824-20260823/images/20260824_banner.jpg",
+      "alt": "8月24日 4社合同セミナー"
+    },
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/souzoku-20260824-20260823/images/speaker-where-takano.jpg",
+      "alt": "高野 智樹"
+    },
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/souzoku-20260824-20260823/images/speaker-brandingtech-yoshida.jpg",
+      "alt": "吉田 聖也"
+    },
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/souzoku-20260824-20260823/images/speaker-facilo-fujiwara.png",
+      "alt": "藤原 崇行"
+    },
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/souzoku-20260824-20260823/images/speaker-delighthub-tachihara.png",
+      "alt": "立原 祥貴"
+    }
+  ]
+}
