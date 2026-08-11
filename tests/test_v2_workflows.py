@@ -86,6 +86,13 @@ class V2WorkflowSafetyTests(unittest.TestCase):
         self.assertNotIn("build_email.py --campaign-slug", workflow)
         self.assertIn("Validate fixed campaign HTML", workflow)
 
+    def test_auto_merge_targets_repository_without_checkout_dependency(self):
+        workflow = (ROOT / ".github/workflows/pr-campaign-validation.yml").read_text(encoding="utf-8")
+        auto_merge_job = workflow.split("  enable-auto-merge:\n", 1)[1]
+        self.assertIn('gh pr merge "${{ github.event.pull_request.number }}" --auto --squash --repo "${{ github.repository }}"', auto_merge_job)
+        self.assertIn("needs: validate-campaign", auto_merge_job)
+        self.assertIn("github.event.pull_request.base.ref == 'main'", auto_merge_job)
+
     def test_recovery_is_admin_gated_and_draft_only(self):
         workflow = (ROOT / ".github/workflows/emergency-recover-zoho-draft.yml").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
