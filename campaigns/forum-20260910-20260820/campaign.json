@@ -1,0 +1,32 @@
+{
+  "campaign_slug": "forum-20260910-20260820",
+  "zoho_campaign_name": "不動産未来フォーラム2026_全19セッション公開_20260820",
+  "template_type": "seminar",
+  "preset": "large",
+  "subject": "【全19セッション公開】不動産業界の最新動向を1日で｜9/10無料開催",
+  "preheader": "不動産価格・金利、AI、営業DX、集客、相続・空き家、媒介獲得、買取再販まで。全19セッションを公開。",
+  "cta": {
+    "label": "無料で参加申し込みをする",
+    "base_url": "https://realestate-future-forum.studio.site/",
+    "utm": {
+      "source": "delighthub",
+      "medium": "email",
+      "campaign": "20260910"
+    }
+  },
+  "content_source": "fixed_html",
+  "images": [
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/forum-20260910-20260820/images/banner.png",
+      "alt": "不動産未来フォーラム2026"
+    },
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/forum-20260910-20260820/images/makino.jpg",
+      "alt": "牧野 知弘 氏"
+    },
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/forum-20260910-20260820/images/oki.jpg",
+      "alt": "沖 有人 氏"
+    }
+  ]
+}
