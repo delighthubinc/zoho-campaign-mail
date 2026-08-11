@@ -57,9 +57,10 @@
 ## Codex後・PR
 
 - Codex結果をChatGPTへ戻し、ChatGPTが `mail.html` 未変更、`campaign.json`、subject/preheader、CTA/UTM、images、共通署名、Validation、テスト、想定外変更をレビューする。
-- 問題なければChatGPTが「PRを作成してよいですか？」と確認する。
-- ユーザーが明示OKした後、**ChatGPTがCodexのhead branchから `main` 向けPRを直接作成する。Codex画面のPRボタンは通常campaignでは使わない。**
-- PR作成直後にbaseが `main` であること、mainとの差分に `mail.html` と `campaign.json` の両方が含まれることを確認する。
+- 問題なければChatGPTは「Codex画面からPRを作成してください」と案内する。
+- ユーザーがCodex画面からPRを作成したら、ChatGPTは必ず「GitHub画面でbase branchが `main` になっているか確認してください。`main` でなければ `main` に変更してください」と案内する。
+- 通常campaignの最終PRのbaseは必ず `main`。作業branchをbaseにしたPRを最終PRとして使わない。
+- `main` 向けPRには、ChatGPTが作業branchへ保存した `mail.html` とCodexが整備した `campaign.json` の両方が差分として含まれる状態にする。
 - PR作成は意図的な人間の承認ゲートである。
 
 ## 自動化
@@ -82,7 +83,8 @@ Chatで制作条件確認
 → Codexが同branchで `campaign.json` 整備・検証（`mail.html` 変更禁止）
 → ChatGPTレビュー
 → ユーザーOK
-→ ChatGPTがCodex head branchからmain向けPR作成
+→ Codex画面からPR作成
+→ GitHubでbaseが `main` か確認・必要なら変更
 → Validation
 → auto-merge
 → GitHub Pages
