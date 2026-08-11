@@ -43,21 +43,33 @@ jobs:
       - name: Validate fixed campaign HTML
         if: steps.scope.outputs.eligible == 'true'
         run: python scripts/validate_campaign.py --campaign-slug "${{ steps.scope.outputs.slug }}"
+
+  enable-auto-merge:
+    name: enable-auto-merge
+    needs: validate-campaign
+    if: >-
+      needs.validate-campaign.result == 'success' &&
+      needs.validate-campaign.outputs.eligible == 'true' &&
+      !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
       - name: Create automation GitHub App token
         id: app-token
-        if: steps.scope.outputs.eligible == 'true' && !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.CAMPAIGN_AUTOMATION_APP_ID }}
           private-key: ${{ secrets.CAMPAIGN_AUTOMATION_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
-      - name: Enable protected auto-merge as the automation GitHub App
-        if: steps.app-token.outcome == 'success'
+      - name: Enable protected auto-merge after validation succeeded
         env:
-          # A GitHub App token is deliberate: merges made with GITHUB_TOKEN suppress
-          # subsequent push workflows. App-authored merges emit the main push event.
+          # App-authored merges emit the main push event used by downstream automation.
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          # GitHub's auto-merge queue still requires branch protection checks and a conflict-free PR.
           gh pr merge "${{ github.event.pull_request.number }}" --auto --squash
