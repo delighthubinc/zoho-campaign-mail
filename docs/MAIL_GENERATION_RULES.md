@@ -11,7 +11,7 @@
 - campaign固有画像は、過去campaign画像との突合・再利用を通常フローで行わず、原則として毎campaign Google Driveの元画像から `campaigns/<slug>/images/` へ取り込む。
 - FIX後のHTMLはファイル添付や巨大コピペでCodexへ渡さない。ChatGPTがGitHubの作業branchへ `mail.html` として直接保存する。
 - Codexは同じ作業branchを引き継ぎ、FIX済み `mail.html` を絶対に変更せず、`campaign.json` の整備・Validation・テストを担当する。
-- PR作成は意図的な人間の承認ゲート。最終PRのbaseは必ず `main` とする。
+- PR作成は意図的な人間の承認ゲート。ChatGPTレビュー後にユーザーが明示OKしたら、ChatGPTがCodexのhead branchから `main` 向けPRを作成する。Codex画面のPRボタンは通常フローでは使わない。
 - GitHub Pages上の公開HTML検証が成功した場合だけZoho Campaigns Draftを自動作成する。
 - Test Email、予約送信、本番送信は自動化しない。
 
@@ -75,6 +75,8 @@
 - セッション：`session_cards.html` + `session_card.html` 等
 - CTA：`cta.html`
 
+共通シェル、とくにロゴ・宛名・配信対象注意書き・フッター署名は手入力・記憶・過去の別担当者情報から再構成してはいけない。`templates/base/email.html` と `config/email_defaults.json` の現在値をそのまま使用する。担当者名、部署、住所、メール、プロフィール画像等をcampaign都合で変更しない。
+
 ユーザーから明示的な変更指示がある場合のみ、そのcampaignの完成HTML上でカスタマイズしてよい。変更指示を受けていない他block / fragmentまで連鎖的に変更しない。
 
 「今後もこれを標準にしたい」とユーザーが明示した場合だけ、通常campaign制作とは分離したtemplate / system変更として扱う。
@@ -90,9 +92,11 @@
 - 同一campaignの専用 `images/` に今回使用する同一画像が既に正常に存在する場合のみ再取込不要。
 - 配信済みcampaignの画像は後続campaignの都合で上書き・削除・リネームしない。
 
-### 共通画像
+### 共通画像・共通署名
 
-Delight Hubロゴ、共通署名プロフィール画像等、全campaign共通の固定素材のみ `assets/common/` を再利用する。会社情報、担当者、宛名、注意書き等は `config/email_defaults.json` で管理する。
+Delight Hubロゴ、共通署名プロフィール画像等、全campaign共通の固定素材のみ `assets/common/` を再利用する。会社情報、担当者、宛名、注意書き等は `config/email_defaults.json` を唯一の正本として使用する。
+
+ChatGPTは共通署名を手入力してはならず、HTML制作時に `email_defaults.json` の `company_name`、`department`、`contact_name`、`postal_code`、`address`、`email`、`corporate_site_url`、`contact_image_url` を確認してそのまま反映する。ValidationもこれらがFIX済みHTMLに存在することを検査する。
 
 ### 取込方法
 
@@ -150,20 +154,19 @@ Codex完了後、ユーザーはCodex回答を元Chatへ貼る。ChatGPTは以�
 - subject / preheader
 - CTA / UTM
 - images
+- 共通署名が `config/email_defaults.json` と一致すること
 - 不要な変更
 - Validation / テスト
 
-問題なければユーザーへPR作成可を案内する。ユーザーOK後、ユーザーがCodex画面からPRを作成する。
+問題なければChatGPTは「PRを作成してよいですか？」とユーザーへ確認する。ユーザーが明示OKした後、**ChatGPTがCodexのhead branchから `main` 向けPRを直接作成する。** Codex画面の「PRを作成する」は通常campaignでは使わない。
 
-**最終PRのbaseは必ず `main`。**
-
-作業branchをbaseにしたPRを通常campaignの最終PRとして使用しない。`PR Campaign Validation` は `main` との差分として `campaign.json` と `mail.html` の両方を検証する。
-
-PR作成は本番自動フローへ流す前の意図的な人間の承認ゲートである。
+PR作成は本番自動フローへ流す前の意図的な人間の承認ゲートである。ChatGPTはPR作成直後にbaseが `main` であること、mainとの差分に `mail.html` と `campaign.json` の両方が含まれることを確認する。
 
 ## PR Validation / auto-merge
 
-`PR Campaign Validation` は全unit test、Python compile、`git diff --check`、placeholder、仮URL、Zoho差し込みタグ、CTA/UTM、campaign画像、共通画像、JavaScript、Secretらしき値等を検査する。campaign.jsonからのHTML再生成一致は検証しない。
+`PR Campaign Validation` は全unit test、Python compile、`git diff --check`、placeholder、仮URL、Zoho差し込みタグ、CTA/UTM、campaign画像、共通画像、共通署名、JavaScript、Secretらしき値等を検査する。campaign.jsonからのHTML再生成一致は検証しない。
+
+PRのbase等が編集された場合も `edited` イベントでValidationを新規実行し、古いbase SHAの再実行に依存しない。
 
 通常campaign限定PRはrequired checks成功後にGitHub Appがauto-mergeする。template、workflow、script、config、docs、複数campaign、対象外path等を含むシステム変更PRは自動マージせず、ユーザーレビューを必須とする。
 
@@ -182,7 +185,7 @@ OAuth値はRepository SecretsからDraft作成stepだけへ渡し、tokenやsecr
 1. ChatGPTがGitHub仕様とDrive素材を確認し、preset・CTA・UTM・使用画像をまとめて提示する。
 2. ユーザーが制作条件を承認する。
 3. ChatGPTが訴求候補を提示し、ユーザーが主訴求を選ぶ。
-4. ChatGPTが件名・preheader・本文・HTMLを一気に制作し、ユーザーと調整する。
+4. ChatGPTが件名・preheader・本文・HTMLを一気に制作し、ユーザーと調整する。共通シェル・署名は `email_defaults.json` をそのまま使う。
 5. campaign固有画像を今回campaign専用 `images/` へ取り込み、正式URLを使用する。
 6. ユーザーがHTMLをFIXする。
 7. ChatGPTが作業branchを作り、FIX済みHTMLを `mail.html` へ直接保存する。
@@ -190,7 +193,7 @@ OAuth値はRepository SecretsからDraft作成stepだけへ渡し、tokenやsecr
 9. ユーザーがCodexで同じ作業branchを選び、プロンプトを実行する。
 10. Codexは `mail.html` を変更せず、`campaign.json` 整備、Validation、テスト、commitまで行う。
 11. Codex結果をChatGPTへ戻し、ChatGPTがレビューする。
-12. ユーザーOK後、ユーザーがCodex画面から **main向けPR** を作成する。
+12. ChatGPTがPR作成可否をユーザーへ確認し、ユーザーOK後にChatGPTがCodex head branchから **main向けPR** を作成する。
 13. `PR Campaign Validation` 成功後、GitHub Appがauto-mergeする。
 14. main反映後、GitHub Pages deploymentと公開HTML検証を行う。
 15. 公開検証成功時だけZoho Campaigns Draftを自動作成する。
@@ -199,12 +202,10 @@ OAuth値はRepository SecretsからDraft作成stepだけへ渡し、tokenやsecr
 
 承認・自動化境界は次のとおり。
 
-**ChatでHTML FIX → ChatがGitHub作業branchへ `mail.html` 保存 → Codexが同branchで `campaign.json` 整備・検証 → ChatGPTレビュー → ユーザーOK → Codex画面からmain向けPR → Validation → auto-merge → Pages → Verify Pages and Create Zoho Draft → Zoho Draft作成**
+**ChatでHTML FIX → ChatがGitHub作業branchへ `mail.html` 保存 → Codexが同branchで `campaign.json` 整備・検証 → ChatGPTレビュー → ユーザーOK → ChatGPTがmain向けPR作成 → Validation → auto-merge → Pages → Verify Pages and Create Zoho Draft → Zoho Draft作成**
 
 ## セキュリティ
 
 - OAuthのClient ID、Client Secret、Refresh Token、Access Tokenをコード、設定JSON、campaignデータ、HTML、ログへ保存・出力しない。
 - 画像は公開を許可された素材だけをGitHub Pagesへ配置する。
-- 本番HTMLに仮CTA URL、placeholder、TODO等を残さない。
-- Draft作成は送信承認ではない。送信操作はユーザーのみが判断する。
-- 障害時の `EMERGENCY - Recover Zoho Draft Only` は管理者専用のDraft復旧口とし、Zoho UIとledgerを確認した場合だけ使用する。
+- 本番HTMLに仮CTA URL、placeholder、TODO等を残
