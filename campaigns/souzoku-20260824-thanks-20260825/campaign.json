@@ -1,0 +1,25 @@
+{
+  "campaign_slug": "souzoku-20260824-thanks-20260825",
+  "zoho_campaign_name": "相続・空き家4社合同セミナー_御礼・資料送付_20260825",
+  "template_type": "seminar",
+  "preset": "standard",
+  "subject": "【御礼・資料送付】昨日はセミナーにご参加いただきありがとうございました",
+  "preheader": "第4部 株式会社Delight Hubのセミナー資料と、9/10開催「不動産未来フォーラム2026」のご案内です。",
+  "cta": {
+    "label": "不動産未来フォーラム2026に申し込む",
+    "base_url": "https://realestate-future-forum.studio.site/",
+    "utm": {
+      "source": "delighthub",
+      "medium": "email",
+      "campaign": "20260825_0824_thanks"
+    }
+  },
+  "resource_url": "https://drive.google.com/file/d/1vDvhED5BBXksJsi7HAEvscmvLLzPlZJJ/view?usp=drivesdk",
+  "content_source": "fixed_html",
+  "images": [
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/souzoku-20260824-thanks-20260825/images/forum-20260910-banner.png",
+      "alt": "不動産未来フォーラム2026"
+    }
+  ]
+}
