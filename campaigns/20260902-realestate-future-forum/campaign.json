@@ -1,0 +1,32 @@
+{
+  "campaign_slug": "20260902-realestate-future-forum",
+  "zoho_campaign_name": "不動産未来フォーラム2026_不動産相続市場_20260902",
+  "template_type": "seminar",
+  "preset": "large",
+  "subject": "【9/10開催】2030年に向け本格化する「不動産相続」市場｜不動産未来フォーラム2026",
+  "preheader": "相続市場の全体像と2030年までに不動産会社が準備すべきことを解説。不動産未来フォーラム2026、9月10日開催。",
+  "cta": {
+    "label": "お申込みはこちら",
+    "base_url": "https://realestate-future-forum.studio.site/",
+    "utm": {
+      "source": "iyell",
+      "medium": "email",
+      "campaign": "20260910"
+    }
+  },
+  "content_source": "fixed_html",
+  "images": [
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/20260902-realestate-future-forum/images/20260910bannerA-3.png",
+      "alt": "不動産未来フォーラム2026"
+    },
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/20260902-realestate-future-forum/images/makino-tomohiro.jpg",
+      "alt": "牧野 知弘 氏"
+    },
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/20260902-realestate-future-forum/images/oki-yuto.jpg",
+      "alt": "沖 有人 氏"
+    }
+  ]
+}
