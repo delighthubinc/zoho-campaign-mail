@@ -1,0 +1,32 @@
+{
+  "campaign_slug": "20261001-fudosan-mirai-forum-archive",
+  "zoho_campaign_name": "不動産未来フォーラム2026_アーカイブ配信_20261001",
+  "template_type": "seminar",
+  "preset": "large",
+  "subject": "【500名超が視聴】不動産未来フォーラム2026のアーカイブ配信決定",
+  "preheader": "10月31日まで無料公開。気になる講演だけ、お好きな時間にご視聴いただけます。",
+  "cta": {
+    "label": "無料アーカイブを視聴する",
+    "base_url": "https://realestate-future-forum.studio.site/archive/",
+    "utm": {
+      "source": "delighthub",
+      "medium": "email",
+      "campaign": "20260910"
+    }
+  },
+  "content_source": "fixed_html",
+  "images": [
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/20261001-fudosan-mirai-forum-archive/images/20261001_banner.png",
+      "alt": "不動産未来フォーラム2026 アーカイブ配信"
+    },
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/20261001-fudosan-mirai-forum-archive/images/oraga-makino-300x300.jpg",
+      "alt": "牧野 知弘 氏"
+    },
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/20261001-fudosan-mirai-forum-archive/images/styleact-oki-300x300.jpg",
+      "alt": "沖 有人 氏"
+    }
+  ]
+}
