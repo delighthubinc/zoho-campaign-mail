@@ -1,0 +1,24 @@
+{
+  "campaign_slug": "20261020-akiyazei-4step-20261019",
+  "zoho_campaign_name": "空室税時代の到来_売却案件を利益に変える4つのヒント_前日リマインド_20261019",
+  "template_type": "seminar",
+  "preset": "large",
+  "subject": "【明日開催】空き家・空室の売却案件を利益に変える4つのヒント｜録画配信あり",
+  "preheader": "明日10/20（火）13:00〜14:30、オンライン・参加無料。当日ご都合が合わない方も、10/22・23・26の録画配信でご視聴いただけます。",
+  "cta": {
+    "label": "無料でセミナーに申し込む",
+    "base_url": "https://eslab.branding-t.co.jp/2026/09/25/seminar-akiyazei-4step/",
+    "utm": {
+      "source": "delighthub",
+      "medium": "email",
+      "campaign": "seminar_akiyazei_4step"
+    }
+  },
+  "content_source": "fixed_html",
+  "images": [
+    {
+      "url": "https://delighthubinc.github.io/zoho-campaign-mail/campaigns/20261020-akiyazei-4step-20261019/images/20261020_banner.jpg",
+      "alt": "空室税時代の到来 4社共催セミナー"
+    }
+  ]
+}
