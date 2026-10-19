@@ -1,6 +1,6 @@
-# AI / Codex 実務ルール
+# AI エージェント実務ルール
 
-メール生成の正式ルールは `docs/MAIL_GENERATION_RULES.md` を最優先で参照する。
+メール生成の正式ルールは `docs/MAIL_GENERATION_RULES.md` を最優先で参照する。標準の制作担当はClaude（Claude Chat／Cowork）で、具体的な操作手順は `docs/CLAUDE_OPERATIONS.md` に従う。ChatGPT＋Codexは代替フローとして `docs/MAIL_GENERATION_RULES.md` の付録に従う。
 
 ## 基本
 
@@ -8,16 +8,18 @@
 - 新規セミナーは `template_type: seminar`、presetは `standard` / `large` を初期構成案として使える。FIX後の表示正本は `campaigns/<slug>/mail.html`。
 - `campaign.json` はcampaign識別、Zoho管理名、subject、preheader、CTA/UTM、画像manifest等の管理・Validation・automation用で、HTML生成元ではない。通常 `content_source` は `fixed_html`。
 - `scripts/build_email.py` は初期HTML生成・標準デザイン参照・開発テスト用途。FIX済み `mail.html` を再生成しない。
+- 開催日時、CTA本体URL、UTM、配信日、配信回数等の重要情報は推測しない。
 
-## ChatGPT制作
+## Claude制作（標準）
 
 - 制作開始時にGitHubで正式仕様・標準デザイン、Google Driveで今回のセミナー情報・素材を確認する。
-- 最初の返答でpreset、CTA、UTM、今回使用するDrive画像のファイル名＋用途をまとめて提示し、制作条件を1回で確認する。
-- 制作条件承認後、campaign固有画像の取込を開始し、並行して主訴求を3〜5案程度提案してユーザーに選んでもらう。
+- 最初の返答でpreset、CTA、UTM、今回使用するDrive画像のファイル名＋用途、campaign slug、`zoho_campaign_name` をまとめて提示し、制作条件を1回で確認する。
+- 制作条件承認後、既存の `Import Drive Images` workflowを `workflow_dispatch`（ref=`main`）で実行してcampaign固有画像を取り込み、主訴求を3〜5案程度提案してユーザーに選んでもらう。Claude経由のIssue本文には自動署名が付くため、Issue方式の画像取込は使わない。
 - campaign固有画像を使うHTMLプレビューは、画像取込成功・repository file確認・GitHub Pages正式URL確定後に作成する。
-- 訴求決定後は件名、preheader、本文、CTA、画像、HTMLプレビューまで一気に作成する。ただし画像取込未完了時はプレビューを出さず、画像取込を先に解決する。
+- 訴求決定後は件名、preheader、本文、CTA、画像、HTMLプレビューまで一気に作成する。
 - 既存block相当の表現は対応するblock / fragmentの実際のHTML/CSSを原則そのまま使用する。ユーザーから明示的な変更指示がない箇所を独自再設計しない。
-- campaign固有の変更はユーザーが指示した箇所だけに限定する。
+- ユーザーがFIXしたら、Claudeが最新 `main` からcampaign専用作業branchを作成し、FIX済みHTMLを `campaigns/<slug>/mail.html` へ保存し、`campaign.json` 整備・Validation・テスト・hash確認を行ってpushする。
+- ClaudeはユーザーのHTML FIXとPR作成許可を確認してからREST APIでPRを作成し、base=`main` を確認する。auto-merge有効化・手動merge・base変更は行わない。
 
 ## HTMLプレビューQA
 
@@ -29,7 +31,7 @@
 - メール全体が標準シェル幅内に収まり、途中から横幅が広がっていないこと。
 - 共通署名・ロゴ・宛名・注意書きが `config/email_defaults.json` / base template と一致すること。
 - 件名、preheader、CTAラベル、CTA URL/UTMが今回の制作条件と一致すること。
-- スマホ幅で明らかな横スクロール、カード崩れ、意図しない縦並び等がないこと。
+- PC幅・スマホ幅で明らかな横スクロール、カード崩れ、意図しない縦並び等がないこと。
 
 QAで問題を見つけた場合はユーザー確認へ進む前に修正する。
 
@@ -46,41 +48,24 @@ QAで問題を見つけた場合はユーザー確認へ進む前に修正する
 - Delight Hubロゴ、共通署名画像等の固定素材だけ `assets/common/` を再利用する。
 - campaign固有画像は過去campaignとの再利用判定をせず、各campaignごとにGoogle Driveの元画像から `campaigns/<slug>/images/` へ取り込む。同一campaignに同一画像が正常に存在する場合のみ再取込不要。
 - Google Drive素材はImage Import Actionsから取得可能な共有状態であることを前提とする。取得できない場合はHTMLプレビューへ進まず、ユーザーへ共有設定の確認を依頼する。
-- ChatGPTは取込前または取込済み判断時に、対象Driveファイル名と用途を必ずユーザーへ明示する。
-- 未取込時の自動取込Issueは、タイトルを完全一致で `[automation:image-import]` とし、本文は既存workflowが要求する規定JSON形式（`campaign_slug` と `images`、各 `drive_file_id` / `filename`）にする。説明文形式やタイトルへのslug追記をしない。
-- 取込完了後はIssue結果、repository file、GitHub Pages正式URLを確認する。
+- 取込前または取込済み判断時に、対象Driveファイル名と用途を必ずユーザーへ明示する。
+- 取込完了後はActions結果、repository file、GitHub Pages正式URLを確認する。
 - campaign固有画像の正式GitHub Pages URLが確定する前に通常のHTMLプレビューを作成・FIXしない。
 - Google Drive直リンクやBase64埋め込みを、画像未取込時の暫定HTMLプレビューとして使用しない。
-- Codexは画像binaryを追加・変更・コピーしない。正式画像URLが未確定ならfail-closedで停止する。
+- 通常campaignの作業branch・PRで画像binaryを追加・変更・コピーしない。正式画像URLが未確定ならfail-closedで停止する。
 
-## FIX済みHTMLの受け渡し
+## 通常campaignの変更範囲
 
-- FIX後のHTMLをCodexへ添付・巨大コピペしない。
-- ユーザーがHTMLをFIXしたら、ChatGPTが `main` からcampaign用作業branchを作成し、FIX済みHTMLを `campaigns/<slug>/mail.html` へ直接保存する。
-- ChatGPTは `main` を直接変更しない。保存後、FIX済みHTMLがそのまま反映され、意図しない他ファイル変更がないことを確認する。
-
-## Codex通常campaignルール
-
-ユーザーはChatGPTが指定した同じ作業branchをCodexで選択する。Codexは以下を厳守する。
-
-- `mail.html` はユーザーFIX済みの正本。絶対に変更しない。
-- HTML/CSS/文面/レスポンシブ挙動を再解釈・再設計・再生成しない。
-- blocksへ逆変換せず、`build_email.py` から再生成しない。
-- 通常変更するcampaign成果物は原則 `campaigns/<slug>/campaign.json` のみ。
-- `campaign.json` を現行正式仕様と `mail.html` に合わせ、`content_source: "fixed_html"`、subject、preheader、CTA、UTM、images manifest等を整合させる。
+- `mail.html` はユーザーFIX済みの正本。FIX後は絶対に変更しない。
+- HTML/CSS/文面/レスポンシブ挙動を再解釈・再設計・再生成しない。blocksへ逆変換せず、`build_email.py` から再生成しない。
+- 通常変更するcampaign成果物は `campaigns/<slug>/mail.html` と `campaigns/<slug>/campaign.json` のみ。
 - 画像binary、template、fragment、script、workflow、config、docs等を通常campaignでは変更しない。
-- Validation、unit tests、Python compile、`git diff --check` 等を実行し、`mail.html` 未変更もhash/diffで確認する。
-- push、PR作成、`gh pr create` は行わず、実装・テスト・ローカルcommitで停止する。
-- 完了後、変更ファイル、主要設定、`mail.html` 未変更、Validation/テスト結果、commit ID、想定外変更の有無を報告する。
+- Validation、unit tests、Python compile、`git diff --check` 等を実行し、`mail.html` 未変更もhashで確認する。
+- `main` へ直接pushしない。
 
-## Codex後・PR
+## Zoho Campaigns管理名称
 
-- Codex結果をChatGPTへ戻し、ChatGPTが `mail.html` 未変更、`campaign.json`、subject/preheader、CTA/UTM、images、共通署名、Validation、テスト、想定外変更をレビューする。
-- 問題なければChatGPTは「Codex画面からPRを作成してください」と案内する。
-- ユーザーがCodex画面からPRを作成したら、ChatGPTは必ず「GitHub画面でbase branchが `main` になっているか確認してください。`main` でなければ `main` に変更してください」と案内する。
-- 通常campaignの最終PRのbaseは必ず `main`。作業branchをbaseにしたPRを最終PRとして使わない。
-- `main` 向けPRには、ChatGPTが作業branchへ保存した `mail.html` とCodexが整備した `campaign.json` の両方が差分として含まれる状態にする。
-- PR作成は意図的な人間の承認ゲートである。
+新規campaignの `zoho_campaign_name` は `YYYYMMDD配信_YYYYMMDD開催N回目_セミナータイトル` とする（例：`20261019配信_20261020開催2回目_空室税時代の到来_売却案件を利益に変える4つのヒント`）。定義と例外は `docs/MAIL_GENERATION_RULES.md` の命名規則に従う。過去campaignの管理名称は変更しない。
 
 ## 自動化
 
@@ -96,18 +81,15 @@ QAで問題を見つけた場合はユーザー確認へ進む前に修正する
 
 ## 正式フロー要約
 
-Chatで制作条件確認
-→ campaign画像取込開始
-→ 訴求決定
-→ 画像取込成功・GitHub Pages正式URL確認
-→ 件名＋HTML制作・内部QA・調整
+Claudeが制作条件確認
+→ ユーザー承認
+→ Claudeが `Import Drive Images` をworkflow_dispatchで実行し、Actions結果・repository file・Pages正式URLを確認
+→ 主訴求決定
+→ Claudeが件名＋HTML制作・PC/SP内部QA・調整
 → ユーザーFIX
-→ ChatGPTがGitHub作業branchへ `mail.html` 保存
-→ Codexが同branchで `campaign.json` 整備・検証（`mail.html` 変更禁止）
-→ ChatGPTレビュー
-→ ユーザーOK
-→ Codex画面からPR作成
-→ GitHubでbaseが `main` か確認・必要なら変更
+→ Claudeが作業branchへ `mail.html` 保存・`campaign.json` 整備・検証・push
+→ ユーザーのPR作成許可
+→ ClaudeがREST APIでPR作成・base=`main` 確認
 → 最新Validation成功
 → auto-merge
 → GitHub Pages
