@@ -1,11 +1,11 @@
 # Zoho Campaign Mail
 
-ChatGPTとユーザーがFIXしたHTMLメールを正本として配置し、GitHub Pages で公開した `mail.html` を使って Zoho Campaigns の **Draft だけ**を作成するリポジトリです。
+Claude（Claude Chat／Cowork）とユーザーがFIXしたHTMLメールを正本として配置し、GitHub Pages で公開した `mail.html` を使って Zoho Campaigns の **Draft だけ**を作成するリポジトリです。
 
 > [!IMPORTANT]
 > このリポジトリには、送信、予約送信、既存キャンペーンの更新機能はありません。`create_zoho_draft.py` が呼び出す Zoho Campaigns API は `createCampaign` だけです。
 
-メール制作におけるChatGPT、Codex、GitHub Actions、ユーザーの役割と承認フローは、正本である [メール生成 正式運用ルール](docs/MAIL_GENERATION_RULES.md) を参照してください。
+メール制作におけるClaude、GitHub Actions、ユーザーの役割と承認フローは、正本である [メール生成 正式運用ルール](docs/MAIL_GENERATION_RULES.md) を参照してください。Claudeの具体的な操作手順は [Claude 実務指示書](docs/CLAUDE_OPERATIONS.md) にあります。ChatGPT＋Codexの従来フローは正式運用ルールの付録に代替手順として記載しています。
 
 ## ディレクトリ構成
 
@@ -17,6 +17,12 @@ ChatGPTとユーザーがFIXしたHTMLメールを正本として配置し、Git
 │       ├── campaign.json        # 識別・CTA/UTM・画像等の管理/Validationデータ
 │       ├── mail.html            # FIX済み表示内容の正本
 │       └── images/              # 公開する画像
+├── docs/
+│   ├── MAIL_GENERATION_RULES.md # 運用仕様の正本
+│   ├── CLAUDE_OPERATIONS.md     # Claude 実務指示書
+│   └── preview-qa-checklist.md  # HTMLプレビュー前QA
+├── AGENTS.md                    # AIエージェント共通の実務ルール
+├── CLAUDE.md                    # Claude 向け入口
 ├── config/
 │   ├── email_defaults.json      # 全セミナーメール共通の公開ブランド・署名設定
 │   ├── zoho.json                # 実運用の非機密固定設定
@@ -54,9 +60,9 @@ cp .env.example .env
 
 `mailing_lists` は「表示名 → listkey」の対応で、配信先が増えた場合も項目を追加できます。
 
-## 1. Codex実装前に画像を取り込む
+## 1. HTMLプレビュー前に画像を取り込む
 
-使用画像は、ChatGPTがHTMLプレビューを確定しCodex用プロンプトを作るより前にGitHubへ取り込みます。campaign固有画像は `campaigns/<slug>/images/`、ロゴや担当者画像などの共通画像は `assets/common/` に配置し、GitHub Pages上の正式画像URLを確定してください。公開Google Drive画像は、既存の **Import Drive Image**、**Import Drive Images**、**Import Common Asset** workflowを用途に応じて使用します。これらの仕組みをCodexで作り直したり、通常campaign PRへ画像binaryを含めたりしません。
+使用画像は、HTMLプレビューを作成する前にGitHubへ取り込みます。campaign固有画像は `campaigns/<slug>/images/`、ロゴや担当者画像などの共通画像は `assets/common/` に配置し、GitHub Pages上の正式画像URLを確定してください。Claude運用の標準は、既存の **Import Drive Images** workflowを `workflow_dispatch`（ref=`main`）で実行する方式です（手順は [Claude 実務指示書](docs/CLAUDE_OPERATIONS.md)）。用途に応じて **Import Drive Image**、**Import Common Asset** workflowも使用できます。これらの仕組みを作り直したり、通常campaign PRへ画像binaryを含めたりしません。
 
 以下はローカル素材を取り込む既存方法です。
 
@@ -79,7 +85,7 @@ python3 scripts/publish_images.py \
   --manifest work/images.json
 ```
 
-Google Drive上の公開画像は上記の既存workflowで取り込みます。取り込み後、GitHub Pages上で参照する正式URLをChatGPTのHTMLプレビューと `campaign.json` の両方で使用します。
+Google Drive上の公開画像は上記の既存workflowで取り込みます。取り込み後、GitHub Pages上で参照する正式URLをHTMLプレビューと `campaign.json` の両方で使用します。
 
 ## 2. FIX済みHTMLメールを配置する
 
@@ -103,7 +109,7 @@ python3 scripts/build_email.py \
   --config config/zoho.json
 ```
 
-このコマンドは初期HTML作成や開発に利用できます。通常campaignでは、ChatGPT上でユーザーがFIXしたHTMLファイルそのものを `campaigns/<slug>/mail.html` に配置します。`campaign.json` は管理・Validation用であり、checked-in HTMLを再生成できる必要はありません。
+このコマンドは初期HTML作成や開発に利用できます。通常campaignでは、ユーザーがFIXしたHTMLファイルそのものを `campaigns/<slug>/mail.html` に配置します。`campaign.json` は管理・Validation用であり、checked-in HTMLを再生成できる必要はありません。
 
 ### セミナーテンプレート
 
@@ -119,7 +125,7 @@ python3 scripts/build_email.py \
 
 ## 3. PR以降のVer.2自動処理
 
-通常フローは、画像をCodex実装前にGitHubへ取り込み、ChatGPTがGitHubの正式テンプレート・GitHub Pages上の正式画像URL・本番CTAを使ったHTMLをユーザーとFIXしてから、FIX済みHTMLファイルそのものと実装プロンプトをCodexへ渡します。CodexはHTMLを再設計・再生成せず、画像binaryも追加・変更・コピーせず、原則として `campaign.json` と `mail.html` だけを実装します。必要画像または正式URLが未確定なら推測せず、「画像を先にGitHubへ取り込む必要がある」と報告してfail-closedで停止します。Codexの実装・テスト結果をChatGPTがレビューし、ユーザーOK後にユーザーがPR作成操作を行うと、通常の単一campaign反映ではGitHub Actionsが次を自動実行します。ユーザーがPages表示を確認してから手動でDraft workflowを起動する操作はありません。
+通常フローでは、Claudeが画像をGitHubへ取り込み、GitHubの正式テンプレート・GitHub Pages上の正式画像URL・本番CTAを使ったHTMLをユーザーとFIXします。FIX後、Claudeが最新mainからcampaign専用branchを作成し、FIX済みHTMLを再設計・再生成せずに `mail.html` として保存し、`campaign.json` 整備・Validation・hash確認を行います。画像binaryは通常campaign PRに含めず、必要画像または正式URLが未確定なら推測せずfail-closedで停止します。ユーザーのPR作成許可を確認してClaudeがPRを作成すると、通常の単一campaign反映ではGitHub Actionsが次を自動実行します。ユーザーがPages表示を確認してから手動でDraft workflowを起動する操作はありません。
 
 1. PR変更範囲、全テスト、compile、FIX済みHTMLのplaceholder、仮値、CTA・UTM、画像、共通素材、Zoho宛名タグ、JavaScript、Secretを検証（HTML再生成一致は行わない）
 2. required checks成功かつ競合なしの場合だけauto-merge
