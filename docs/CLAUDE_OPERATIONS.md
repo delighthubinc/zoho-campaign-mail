@@ -163,11 +163,7 @@ gh api --method POST repos/delighthubinc/zoho-campaign-mail/pulls --input pr.jso
 
 Validation失敗、auto-merge未実行、Pages未完了、Draft作成失敗のいずれかでは、そこで停止して失敗箇所を報告する。再実行やworkflowの手動起動は、ユーザーの許可なく行わない。
 
-### Zoho Campaigns管理画面URLの報告
-
-Draft作成が成功したら、最終報告に該当キャンペーンの管理画面へ直接開けるURLを記載する。URLは実際の画面またはAPI応答から取得したものに限り、推測で組み立てない。
-
-現状、`create_zoho_draft.py` は作成成功の判定だけを行い、キャンペーンIDを出力・保存していない。また内蔵ブラウザがZoho Campaignsにサインインしていない場合、Claudeは管理画面を開けない（パスワード入力は行わない）。URLを取得できない場合は、その理由と必要な対応（ユーザーによる内蔵ブラウザでのサインイン等）を報告する。
+Draft作成が成功したら、最終報告ではDraft作成の成功結果（上表の確認結果）と `zoho_campaign_name` を提示する。
 
 ## 9. ⑩ ユーザーの手動操作
 

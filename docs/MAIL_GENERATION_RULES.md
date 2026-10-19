@@ -157,7 +157,7 @@ main反映後、`Verify Pages and Create Zoho Draft` は同一commitのGitHub Pa
 
 自動化の終点はDraft作成。Test Email、予約送信、本番送信、`sendCampaign`系APIは自動化しない。
 
-Claudeは最終報告で、Validation・auto-merge・Pages・Draft作成の結果と、該当Draftの管理画面へ直接開けるURLを報告する。管理画面URLは実際の画面またはAPI応答から取得したものに限り、推測で生成しない。取得できない場合は理由と必要な対応を報告する。
+Claudeは最終報告で、Validation・auto-merge・Pages・Draft作成の結果と、作成されたDraftの `zoho_campaign_name` を報告する。
 
 ## Zoho Campaigns管理名称の命名規則
 
